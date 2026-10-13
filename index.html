@@ -151,8 +151,71 @@ const num = (v,d=0)=>{const n=Number(v);return isFinite(n)?n.toLocaleString('pt-
 const hoje = ()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtData = (iso)=>{if(!iso)return '';const p=String(iso).split('-');if(p.length<3)return h(iso);const m=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+p[1]-1]||p[1];return (+p[2])+' '+m+' '+p[0];};
 const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const lsGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
-const lsSet=(k,v)=>{try{localStorage.setItem('tn:'+k,JSON.stringify(v));}catch(e){}};
+/* ---------- cofre: dados criptografados (AES-GCM) com uma chave mestra.
+   A chave mestra fica guardada duas vezes: travada pela senha e travada pelo código de recuperação. ---------- */
+const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto'];
+const ITER=310000;
+const COFRE={key:null, mestra:null, cache:{}, fila:Promise.resolve()};
+const rawGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
+const rawSet=(k,v)=>{localStorage.setItem('tn:'+k,JSON.stringify(v));};
+const rawDel=(k)=>{try{localStorage.removeItem('tn:'+k);}catch(e){}};
+const b64=(buf)=>{let s='';const a=new Uint8Array(buf);for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000));return btoa(s);};
+const unb64=(t)=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
+const temCripto=()=>!!(window.crypto&&crypto.subtle&&window.isSecureContext);
+async function derivar(segredo,salt,iter){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(segredo),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+const chaveDe=(bytes)=>crypto.subtle.importKey('raw',bytes,{name:'AES-GCM'},false,['encrypt','decrypt']);
+async function cifrarBytes(key,bytes){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,bytes);return {iv:b64(iv),ct:b64(ct)};}
+async function decifrarBytes(key,pac){return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(pac.iv)},key,unb64(pac.ct)));}
+const cifrar=(key,obj)=>cifrarBytes(key,new TextEncoder().encode(JSON.stringify(obj)));
+async function decifrar(key,pac){return JSON.parse(new TextDecoder().decode(await decifrarBytes(key,pac)));}
+
+// código de recuperação: 20 caracteres sem letras ambíguas, em grupos de 4
+const ALFA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function gerarCodigo(){const r=crypto.getRandomValues(new Uint8Array(20));let c='';for(let i=0;i<20;i++){c+=ALFA[r[i]%32];if(i%4===3&&i<19)c+='-';}return c;}
+const normCodigo=(t)=>String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0').replace(/I/g,'1');
+async function embrulhar(segredo,mestra){const salt=crypto.getRandomValues(new Uint8Array(16));const k=await derivar(segredo,salt,ITER);return {salt:b64(salt),iter:ITER,pac:await cifrarBytes(k,mestra)};}
+async function desembrulhar(segredo,emb){const k=await derivar(segredo,unb64(emb.salt),emb.iter);return decifrarBytes(k,emb.pac);}
+
+async function carregarCache(mestra){
+  const key=await chaveDe(mestra); const cache={};
+  for(const k of CHAVES){ const pac=rawGet('x:'+k); if(pac){ try{cache[k]=await decifrar(key,pac);}catch(e){} } }
+  COFRE.key=key; COFRE.mestra=mestra; COFRE.cache=cache;
+}
+// abre com a senha (ou com o código, se porCodigo); devolve false se não confere
+async function abrirCofre(segredo,porCodigo){
+  const c=rawGet('cofre'); if(!c) return false;
+  let mestra; try{ mestra=await desembrulhar(porCodigo?normCodigo(segredo):segredo, porCodigo?c.codigo:c.senha); }catch(e){ return false; }
+  await carregarCache(mestra); return true;
+}
+// cria o cofre com os dados em memória; devolve o código de recuperação
+async function criarCofre(senha,dados,email){
+  const mestra=crypto.getRandomValues(new Uint8Array(32)); const key=await chaveDe(mestra);
+  const pacotes={}; for(const k of CHAVES){ if(dados[k]!==undefined&&dados[k]!==null) pacotes[k]=await cifrar(key,dados[k]); }
+  const codigo=gerarCodigo();
+  const cofre={v:2, senha:await embrulhar(senha,mestra), codigo:await embrulhar(normCodigo(codigo),mestra), email:email||''};
+  for(const k of CHAVES){ if(pacotes[k]) rawSet('x:'+k,pacotes[k]); else rawDel('x:'+k); }
+  rawSet('cofre',cofre);
+  for(const k of CHAVES) rawDel(k);   // apaga cópias antigas sem criptografia
+  COFRE.key=key; COFRE.mestra=mestra; COFRE.cache=Object.assign({},dados);
+  return codigo;
+}
+// com o cofre aberto: troca só a senha (dados e código continuam)
+async function novaSenha(senha){ const c=rawGet('cofre'); c.senha=await embrulhar(senha,COFRE.mestra); rawSet('cofre',c); }
+// com o cofre aberto: novo código (o antigo deixa de valer)
+async function novoCodigo(){ const c=rawGet('cofre'); const cod=gerarCodigo(); c.codigo=await embrulhar(normCodigo(cod),COFRE.mestra); rawSet('cofre',c); return cod; }
+function salvarEmail(email){ const c=rawGet('cofre'); if(c){ c.email=email; rawSet('cofre',c); } }
+function fecharCofre(){ COFRE.key=null; COFRE.mestra=null; COFRE.cache={}; }
+const mascarar=(e)=>{const m=String(e||'').match(/^(.)(.*)(@.*)$/);return m?m[1]+'•••'+m[3]:'';};
+const emailValido=(e)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e||'').trim());
+const lsGet=(k)=>{const v=COFRE.cache[k];return v===undefined?null:v;};
+function lsSet(k,v){
+  COFRE.cache[k]=v; const key=COFRE.key; if(!key) return COFRE.fila;
+  COFRE.fila=COFRE.fila.then(async()=>{ try{ rawSet('x:'+k, await cifrar(key,v)); }catch(e){ toast('O celular não deixou salvar. Libere espaço ou apague exames antigos.'); } });
+  return COFRE.fila;
+}
 
 const ICON = {
   check:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -166,10 +229,7 @@ const ICON = {
 
 /* ---------- armazenamento: só neste celular ---------- */
 async function load(name, fallback){ const v=lsGet(name); return v==null?fallback:v; }
-async function save(name, value){
-  try{ localStorage.setItem('tn:'+name, JSON.stringify(value)); }
-  catch(e){ toast('O celular não deixou salvar. Libere espaço ou apague exames antigos.'); }
-}
+async function save(name, value){ await lsSet(name, value); }
 
 /* ---------- IA ---------- */
 const PROV = {
@@ -485,7 +545,10 @@ function telaPerfil(){
     ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
   </form>
   ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?'Usando '+h(PROV[S.cfg.provedor].nome)+' · modelo '+h(S.cfg.modelo||PROV[S.cfg.provedor].modelo):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
-  <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
+  <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">O app pede a senha ao abrir e depois de 5 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
+  <div class="grid2"><button class="btn ghost" data-act="trocarSenha">Trocar senha</button><button class="btn ghost" data-act="bloquear">Bloquear agora</button></div>
+  <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button></div>
+  <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular, criptografados com a sua senha. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
   <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
 }
 
@@ -505,6 +568,80 @@ function telaConfig(){
     ${iaPronta()?'<button type="button" class="btn plain block" data-act="rmChave">Apagar chave deste celular</button>':''}
     ${primeiro&&!S.editCfg?'<button type="button" class="btn plain block" data-act="pularCfg">Configurar depois</button>':''}
   </form>`;
+}
+
+function telaSenha(){
+  const L=S.lock; const espera=Math.max(0,Math.ceil(((S.bloqAte||0)-Date.now())/1000));
+  const avisos=`${S.erro?`<div class="status bad row" role="alert">${ICON.warn}<span>${h(S.erro)}</span></div>`:''}${S.busy?`<div class="status info row" role="status"><span class="spinner" aria-hidden="true"></span><span>${h(S.busy.txt)}</span></div>`:''}`;
+  const mostrar='<label class="row small" style="gap:8px;min-height:44px"><input class="mostrar" type="checkbox" style="width:22px;min-height:22px"> Mostrar senha</label>';
+  if(L==='semCripto') return `<div class="stack" style="padding-top:40px"><span class="eyebrow">Treino e Nutrição</span><h1>Abra pelo endereço seguro</h1><p class="muted">A proteção por senha só funciona no endereço que começa com https://. Abra o app pelo link do GitHub Pages.</p></div>`;
+  if(L==='codigo') return telaCodigo(false);
+  if(L==='recuperar'){
+    const c=rawGet('cofre')||{};
+    return `<div class="stack-s" style="padding-top:24px"><span class="eyebrow">Esqueci a senha</span><h1>Use o código de recuperação</h1>
+    <p class="muted">${c.email?'Ele foi enviado para '+h(mascarar(c.email))+' quando você criou a senha. Procure por "Treino e Nutrição" no e-mail.':'É o código de 20 caracteres que o app mostrou quando você criou a senha.'}</p></div>
+    ${avisos}
+    <form id="fRecuperar" class="stack" novalidate>
+      <input type="text" name="username" value="treino-nutricao" autocomplete="username" hidden>
+      <label class="f">Código de recuperação<input id="rCodigo" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="font-variant-numeric:tabular-nums;letter-spacing:.04em"></label>
+      <label class="f">Nova senha<input id="rNova" type="password" autocomplete="new-password"></label>
+      <label class="f">Repita a nova senha<input id="rNova2" type="password" autocomplete="new-password"></label>
+      ${mostrar}
+      <button class="btn block" type="submit"${S.busy||espera?' disabled':''}>${espera?'Aguarde '+espera+' s':'Criar nova senha'}</button>
+      <div class="grid2"><button type="button" class="btn plain" data-act="lockVoltar">Voltar</button><button type="button" class="btn plain" data-act="semCodigo">Não tenho o código</button></div>
+    </form>`;
+  }
+  if(L==='apagar') return `<div class="stack" style="padding-top:24px"><span class="eyebrow">Sem senha e sem código</span><h1>Apagar e começar de novo?</h1>
+    <p class="muted">Sem a senha ou o código, ninguém consegue destravar os dados, nem o app. Para voltar a usar, é preciso apagar tudo deste celular: perfil, exames, plano e a chave de IA.</p>
+    <p class="muted">Se você tiver uma cópia de segurança (.json), dá para restaurar depois em Perfil › Restaurar cópia.</p>
+    <div class="grid2"><button class="btn plain" data-act="lockVoltar">Voltar</button><button class="btn danger" data-act="apagarTudo">Apagar tudo</button></div></div>`;
+  const criar=L==='criar';
+  return `<div class="stack-s" style="padding-top:24px"><span class="eyebrow">Treino e Nutrição</span>
+    <h1>${criar?'Crie uma senha':'Digite sua senha'}</h1>
+    <p class="muted">${criar?(S.migrar?'Seus exames, plano e chave de IA vão ficar protegidos por ela neste celular.':'Ela protege seus exames, seu plano e sua chave de IA neste celular.'):'Seus dados estão protegidos.'}</p></div>
+  ${avisos}
+  <form id="fSenha" class="stack" novalidate>
+    <input type="text" name="username" value="treino-nutricao" autocomplete="username" hidden>
+    <label class="f">${criar?'Nova senha':'Senha'}<input id="sSenha" type="password" autocomplete="${criar?'new-password':'current-password'}"></label>
+    ${criar?`<label class="f">Repita a senha<input id="sSenha2" type="password" autocomplete="new-password"></label>
+    <label class="f">E-mail para recuperação (opcional)<input id="sEmail" type="email" inputmode="email" autocomplete="email" value="${h(S.emailRasc||'')}" placeholder="voce@exemplo.com"></label>
+    <p class="note">Senha com no mínimo 4 caracteres; pode ser só números. No próximo passo o app gera um código de recuperação e prepara um e-mail com ele para você mesmo.</p>`:''}
+    ${mostrar}
+    <button class="btn block" type="submit"${S.busy||espera?' disabled':''}>${espera?'Aguarde '+espera+' s':(criar?'Criar senha':'Entrar')}</button>
+    ${criar?'':'<button type="button" class="btn plain block" data-act="esqueci">Esqueci a senha</button>'}
+  </form>`;
+}
+
+function linkEmail(email,codigo){
+  const corpo='Código de recuperação do app Treino e Nutrição:\n\n'+codigo+'\n\nSe esquecer a senha, abra o app, toque em "Esqueci a senha" e digite este código para criar uma senha nova sem perder seus dados.\n\nEndereço do app: '+location.origin+location.pathname+'\n\nGuarde este e-mail e não o encaminhe para ninguém.';
+  return 'mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent('Código de recuperação · Treino e Nutrição')+'&body='+encodeURIComponent(corpo);
+}
+
+// mostra o código recém-gerado (na criação da senha ou ao gerar um novo pelo perfil)
+function telaCodigo(dentro){
+  const cod=S.novoCodigo||''; const c=rawGet('cofre')||{}; const email=S.emailRasc!=null?S.emailRasc:(c.email||'');
+  return `${dentro?header('Código de recuperação',true):'<div class="stack-s" style="padding-top:24px"><span class="eyebrow">Senha criada</span><h1>Guarde seu código de recuperação</h1></div>'}
+  <p class="muted">Se esquecer a senha, este código é o único jeito de criar uma nova sem perder seus dados.${dentro?' O código anterior deixou de valer.':''}</p>
+  <div class="card stack-s" style="text-align:center"><span class="eyebrow">Código</span>
+    <span id="codTxt" style="font-family:var(--display);font-weight:700;font-size:clamp(15px,4.6vw,21px);letter-spacing:.03em;font-variant-numeric:tabular-nums;white-space:nowrap;user-select:all">${h(cod)}</span>
+    <button type="button" class="btn plain" data-act="copiarCodigo">Copiar código</button></div>
+  <div class="card stack"><h3>Enviar para o seu e-mail</h3>
+    <label class="f">E-mail<input id="cEmail" type="email" inputmode="email" autocomplete="email" value="${h(email)}" placeholder="voce@exemplo.com"></label>
+    <button type="button" class="btn block" data-act="enviarEmail">Abrir e-mail com o código</button>
+    <p class="note">O app abre seu aplicativo de e-mail com a mensagem pronta para você mesmo. Confira o destinatário e toque em Enviar.</p></div>
+  <label class="row" style="gap:10px;min-height:44px"><input id="cGuardei" type="checkbox" style="width:22px;min-height:22px"${S.guardei?' checked':''}> <span>Guardei o código (enviei por e-mail ou anotei)</span></label>
+  <button type="button" class="btn block" data-act="codigoOk"${S.guardei?'':' disabled'}>Continuar</button>`;
+}
+
+function telaTrocaSenha(){
+  return header('Trocar senha',true)+statusBox()+`<form id="fTroca" class="stack" novalidate>
+    <input type="text" name="username" value="treino-nutricao" autocomplete="username" hidden>
+    <label class="f">Senha atual<input id="tAtual" type="password" autocomplete="current-password"></label>
+    <label class="f">Nova senha<input id="tNova" type="password" autocomplete="new-password"></label>
+    <label class="f">Repita a nova senha<input id="tNova2" type="password" autocomplete="new-password"></label>
+    <label class="row small" style="gap:8px;min-height:44px"><input class="mostrar" type="checkbox" style="width:22px;min-height:22px"> Mostrar senha</label>
+    <p class="note">Mínimo de 4 caracteres. O código de recuperação continua o mesmo.</p>
+    <button class="btn block" type="submit"${S.busy?' disabled':''}>Trocar senha</button></form>`;
 }
 
 function semana(){
@@ -638,9 +775,12 @@ function telaChat(){
 
 /* ---------- render ---------- */
 function render(){
+  if(S.lock){ $nav.hidden=true; $app.innerHTML=telaSenha(); return; }
   if(!S.ready) return;
   let html;
-  if(!S.perfil||S.editPerfil){ html=telaPerfil(); $nav.hidden=!S.perfil; }
+  if(S.sub==='senha'){ html=telaTrocaSenha(); $nav.hidden=false; }
+  else if(S.sub==='codigo'){ html=telaCodigo(true); $nav.hidden=false; }
+  else if(!S.perfil||S.editPerfil){ html=telaPerfil(); $nav.hidden=!S.perfil; }
   else if(S.editCfg||!S.cfgVisto){ html=telaConfig(); $nav.hidden=!S.cfgVisto; }
   else{
     $nav.hidden=false;
@@ -663,7 +803,7 @@ document.addEventListener('click', async (ev)=>{
   const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
-  if(a==='voltar'){ if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
+  if(a==='voltar'){ if(S.sub==='senha'||S.sub==='codigo'){S.sub=null;S.editPerfil=true;S.erro=null;S.novoCodigo=null;S.emailRasc=null;} else if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
   else if(a==='perfil'){S.editPerfil=true;render();window.scrollTo(0,0);}
   else if(a==='gerar'){ gerarPlano(); }
   else if(a==='analise'){S.sub='analise';render();window.scrollTo(0,0);}
@@ -691,6 +831,37 @@ document.addEventListener('click', async (ev)=>{
     try{await ia.chat([{role:'user',content:'Responda apenas: ok'}],{onStatus:(t)=>{S.busy={txt:t};render();}});S.busy=null;render();toast('Conexão funcionando.');}
     catch(e){S.busy=null;S.erro=erroIA(e);render();}
   }
+  else if(a==='esqueci'){S.lock='recuperar';S.erro=null;render();}
+  else if(a==='semCodigo'){S.lock='apagar';S.erro=null;render();}
+  else if(a==='copiarCodigo'){
+    try{ await navigator.clipboard.writeText(S.novoCodigo); toast('Código copiado.'); }
+    catch(e){ const el=document.getElementById('codTxt'); const sel=getSelection(); const rg=document.createRange(); rg.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(rg); toast('Código selecionado. Toque em Copiar.'); }
+  }
+  else if(a==='enviarEmail'){
+    const e=(document.getElementById('cEmail').value||'').trim();
+    if(!emailValido(e)){ toast('Digite um e-mail válido.'); document.getElementById('cEmail').focus(); return; }
+    S.emailRasc=e; salvarEmail(e);
+    const ln=document.createElement('a'); ln.href=linkEmail(e,S.novoCodigo); ln.rel='noopener'; document.body.appendChild(ln); ln.click(); ln.remove();
+    S.guardei=true; render(); toast('Depois de enviar o e-mail, volte aqui e toque em Continuar.');
+  }
+  else if(a==='codigoOk'){
+    const e=document.getElementById('cEmail'); if(e&&emailValido(e.value)) salvarEmail(e.value.trim());
+    S.novoCodigo=null; S.guardei=false; S.emailRasc=null;
+    if(S.lock==='codigo'){ S.lock=null; await carregarDados(); toast('Tudo pronto. Seus dados estão protegidos.'); }
+    else { S.sub=null; S.editPerfil=true; render(); window.scrollTo(0,0); toast('Novo código salvo.'); }
+  }
+  else if(a==='gerarCodigo'){
+    S.busy={txt:'Gerando código…'}; render();
+    try{ S.novoCodigo=await novoCodigo(); }catch(e){ S.busy=null; toast('Não consegui gerar o código. Tente de novo.'); render(); return; }
+    S.busy=null; S.guardei=false; S.emailRasc=null; S.editPerfil=false; S.sub='codigo'; render(); window.scrollTo(0,0);
+  }
+  else if(a==='lockVoltar'){S.lock='entrar';S.erro=null;render();}
+  else if(a==='apagarTudo'){
+    try{ Object.keys(localStorage).filter(k=>k.startsWith('tn:')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+    fecharCofre(); Object.assign(S,{perfil:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
+  }
+  else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
+  else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){S.cfg={provedor:S.cfg.provedor,chave:'',modelo:''};lsSet('cfg',S.cfg);toast('Chave apagada.');render();}
   else if(a==='exportar'){
@@ -708,6 +879,49 @@ function lerCfgForm(){const k=document.getElementById('cChave'),m=document.getEl
 
 document.addEventListener('submit', async (ev)=>{
   ev.preventDefault(); const f=ev.target;
+  if(f.id==='fSenha'){
+    const v=document.getElementById('sSenha').value; S.erro=null;
+    if(S.lock==='criar'){
+      const v2=document.getElementById('sSenha2').value; const em=(document.getElementById('sEmail').value||'').trim();
+      S.emailRasc=em;
+      if(v.length<4){S.erro='A senha precisa ter pelo menos 4 caracteres.';render();return;}
+      if(v!==v2){S.erro='As duas senhas não são iguais.';render();return;}
+      if(em&&!emailValido(em)){S.erro='O e-mail parece incompleto. Corrija ou deixe em branco.';render();return;}
+      S.busy={txt:'Protegendo seus dados…'};render();
+      const dados={}; for(const k of CHAVES){ const x=rawGet(k); if(x!==null) dados[k]=x; }
+      try{ S.novoCodigo=await criarCofre(v,dados,em); }catch(e){ S.busy=null; S.erro='Não consegui criar a senha neste aparelho. Libere espaço e tente de novo.'; render(); return; }
+      S.busy=null; S.guardei=false; S.lock='codigo'; render(); window.scrollTo(0,0); return;
+    }
+    if(!v){render();return;}
+    S.busy={txt:'Abrindo…'};render();
+    let ok=false; try{ ok=await abrirCofre(v,false); }catch(e){ ok=false; }
+    S.busy=null;
+    if(!ok){ falhouTentativa('Senha incorreta.'); return; }
+    rawDel('tentativas'); S.lock=null; S.erro=null; await carregarDados(); return;
+  }
+  if(f.id==='fRecuperar'){
+    const cod=document.getElementById('rCodigo').value, n1=document.getElementById('rNova').value, n2=document.getElementById('rNova2').value;
+    S.erro=null;
+    if(normCodigo(cod).length!==20){S.erro='O código tem 20 letras e números. Confira e digite de novo.';render();return;}
+    if(n1.length<4){S.erro='A nova senha precisa ter pelo menos 4 caracteres.';render();return;}
+    if(n1!==n2){S.erro='As duas senhas novas não são iguais.';render();return;}
+    S.busy={txt:'Conferindo o código…'};render();
+    let ok=false; try{ ok=await abrirCofre(cod,true); }catch(e){ ok=false; }
+    if(!ok){ S.busy=null; falhouTentativa('Código incorreto.'); return; }
+    try{ await novaSenha(n1); }catch(e){ S.busy=null; S.erro='Não consegui salvar a nova senha. Tente de novo.'; render(); return; }
+    rawDel('tentativas'); S.busy=null; S.lock=null; S.erro=null; await carregarDados(); toast('Senha nova criada. O código de recuperação continua o mesmo.'); return;
+  }
+  if(f.id==='fTroca'){
+    const at=document.getElementById('tAtual').value, n1=document.getElementById('tNova').value, n2=document.getElementById('tNova2').value;
+    S.erro=null;
+    if(n1.length<4){S.erro='A nova senha precisa ter pelo menos 4 caracteres.';render();return;}
+    if(n1!==n2){S.erro='As duas senhas novas não são iguais.';render();return;}
+    S.busy={txt:'Trocando a senha…'};render();
+    let ok=false; try{ await desembrulhar(at,rawGet('cofre').senha); ok=true; }catch(e){}
+    if(!ok){S.busy=null;S.erro='A senha atual está incorreta.';render();return;}
+    try{ await novaSenha(n1); }catch(e){ S.busy=null; S.erro='Não consegui trocar a senha. Tente de novo.'; render(); return; }
+    S.busy=null; S.sub=null; S.editPerfil=true; toast('Senha trocada.'); render(); window.scrollTo(0,0); return;
+  }
   if(f.id==='fCfg'){
     lerCfgForm(); if(!S.cfg.chave){document.getElementById('cChave').focus();toast('Cole a chave de API.');return;}
     lsSet('cfg',S.cfg); const primeiro=!S.cfgVisto; S.cfgVisto=true; lsSet('cfgVisto',true); S.editCfg=false; S.erro=null;
@@ -734,6 +948,8 @@ document.addEventListener('submit', async (ev)=>{
   }
 });
 document.addEventListener('change',(ev)=>{
+  if(ev.target.classList.contains('mostrar')){ const f=ev.target.closest('form'); f.querySelectorAll('input[type=password],input[data-pw]').forEach(i=>{i.dataset.pw='1';i.type=ev.target.checked?'text':'password';}); return; }
+  if(ev.target.id==='cGuardei'){ S.guardei=ev.target.checked; const b=document.querySelector('[data-act=codigoOk]'); if(b) b.disabled=!S.guardei; return; }
   if(ev.target.id==='fArq'&&ev.target.files&&ev.target.files.length){ const fs=Array.from(ev.target.files); ev.target.value=''; lerExame(fs); }
   if(ev.target.id==='fImp'&&ev.target.files&&ev.target.files[0]){
     const f=ev.target.files[0]; ev.target.value='';
@@ -748,13 +964,46 @@ document.addEventListener('change',(ev)=>{
 });
 
 /* ---------- início ---------- */
-async function boot(){
+function falhouTentativa(msg){
+  const t=(rawGet('tentativas')||0)+1; try{rawSet('tentativas',t);}catch(e){}
+  if(t>=5){ S.bloqAte=Date.now()+30000*Math.pow(2,Math.min(t-5,5)); tickBloqueio(); }
+  S.erro=msg+(t>=5?' Muitas tentativas: espere para tentar de novo.':''); render();
+}
+function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bloqAte||0)){clearInterval(t);} if((S.lock==='entrar'||S.lock==='recuperar')&&!S.busy){ const ids=['sSenha','rCodigo','rNova','rNova2']; const vals=ids.map(i=>{const e=document.getElementById(i);return e?e.value:null;}); render(); ids.forEach((i,n)=>{const e=document.getElementById(i);if(e&&vals[n]!=null)e.value=vals[n];}); } },1000); }
+
+function bloquear(){
+  if(!COFRE.key) return;
+  fecharCofre(); if(chatCtl) chatCtl.abort();
+  Object.assign(S,{perfil:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
+  window.scrollTo(0,0); render();
+}
+
+async function carregarDados(){
   const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
   S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
   S.feitos=lsGet('feitos')||{}; S.cfg=lsGet('cfg'); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
   if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
-  S.ready=true; render();
+  S.ready=true; render(); window.scrollTo(0,0);
+}
+
+// bloqueio automático: 5 minutos em segundo plano
+const BLOQ_MS=5*60*1000; let saiuEm=null;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ saiuEm=Date.now(); }
+  else if(saiuEm&&COFRE.key&&Date.now()-saiuEm>=BLOQ_MS){ saiuEm=null; COFRE.fila.then(bloquear); }
+  else saiuEm=null;
+});
+
+async function boot(){
   if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  if(!temCripto()){ S.lock='semCripto'; render(); return; }
+  if(rawGet('cofre')){
+    S.lock='entrar';
+    const t=rawGet('tentativas')||0; if(t>=5){ S.bloqAte=Date.now()+30000; tickBloqueio(); }
+  } else {
+    S.migrar=CHAVES.some(k=>rawGet(k)!==null); S.lock='criar';
+  }
+  render(); setTimeout(()=>{const i=document.getElementById('sSenha');if(i)i.focus();},50);
 }
 boot();
 })();
