@@ -329,52 +329,101 @@ Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, d
   }catch(e){S.busy=null;S.erro=erroIA(e);render();}
 }
 
+const MAX_PAGINAS = 40;   // páginas por laudo
+const LOTE = 4;           // páginas enviadas à IA por chamada
+
+const normNome = (t)=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9%]+/g,' ').trim();
+const limparItem = (i)=>({nome:String(i.nome||'').trim(),valor:String(i.valor??'').trim(),unidade:String(i.unidade||'').trim(),referencia:String(i.referencia||'').trim(),situacao:String(i.situacao||'sem_referencia')});
+
+function promptLaudo(origem, tipoInf, dataInf){
+  return `Você extrai dados de laudos de saúde (exame de sangue, bioimpedância, avaliação física) em português.
+${origem}
+${tipoInf?'Tipo informado: '+tipoInf+'.':''} ${dataInf?'Data informada: '+dataInf+'.':''}
+Responda SOMENTE com JSON:
+{"tipo":"sangue|bioimpedancia|avaliacao|outro","data":"AAAA-MM-DD ou vazio","laboratorio":"nome ou vazio","itens":[{"nome":"Glicose","valor":"102","unidade":"mg/dL","referencia":"70 a 99","situacao":"normal|baixo|alto|sem_referencia"}],"observacao":"1 frase com o que chamou atenção, sem diagnóstico, ou vazio"}
+Copie valores e referências exatamente como estão. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Em hemograma e urina, use o nome completo do item (ex.: "Leucócitos (urina)") para não confundir com o do sangue. Não invente itens que não aparecem. Páginas sem resultados (capa, instruções, assinatura) geram "itens":[].`;
+}
+
+// Lista as páginas sem renderizar ainda: imagens prontas ou páginas de PDF
+async function listarPaginas(files){
+  const lib=window.pdfjsLib; const pags=[]; let total=0;
+  for(const f of files){
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+      if(!lib) throw {code:'pdf'};
+      let pdf;
+      try{ lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; pdf=await lib.getDocument({data:await f.arrayBuffer()}).promise; }
+      catch(e){ throw {code:'pdf'}; }
+      for(let i=1;i<=pdf.numPages;i++){ total++; if(pags.length<MAX_PAGINAS) pags.push({pdf,n:i}); }
+    }else{ total++; if(pags.length<MAX_PAGINAS) pags.push({blob:f}); }
+  }
+  return {pags,total};
+}
+async function renderPagina(p){
+  if(p.blob) return p.blob;
+  try{
+    const pg=await p.pdf.getPage(p.n); const vp=pg.getViewport({scale:1.8});
+    const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height;
+    const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+    await pg.render({canvasContext:ctx,viewport:vp}).promise;
+    const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85)); c.width=c.height=0; return b;
+  }catch(e){ throw {code:'pdf'}; }
+}
+
 async function lerExame(files, texto, tipoInf, dataInf){
   if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
   S.busy={tipo:'exame',txt:'Lendo o laudo…'};S.erro=null;render();
+  const status=(t)=>{S.busy={tipo:'exame',txt:t};render();};
   try{
-    let imgs=[];
-    if(files&&files.length){
-      const max = 5;
-      for(const f of files){
-        if(imgs.length>=max)break;
-        if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
-          S.busy.txt='Abrindo o PDF…';render();
-          const r=await pdfParaImagens(f,max-imgs.length);
-          imgs=imgs.concat(r);
-        }else imgs.push(f);
-      }
-      if(!imgs.length) throw {code:'image_rejected'};
-      S.busy.txt='Lendo os valores do laudo. Isso leva alguns segundos.';render();
+    // texto digitado: uma chamada só
+    if(!files||!files.length){
+      const r=await ia.json(promptLaudo('Texto digitado pela pessoa:\n+texto+',tipoInf,dataInf),{onStatus:status});
+      if(!r||!Array.isArray(r.itens)) throw {code:'invalid_json'};
+      abrirRevisao([r],tipoInf,dataInf,[]); return;
     }
-    const prompt = `Você extrai dados de laudos de saúde (exame de sangue, bioimpedância, avaliação física) em português.
-${imgs.length?'As imagens anexas são as páginas de um laudo.':'Texto digitado pela pessoa:\n"""'+texto+'"""'}
-${tipoInf?'Tipo informado: '+tipoInf+'.':''} ${dataInf?'Data informada: '+dataInf+'.':''}
-Responda SOMENTE com JSON:
-{"tipo":"sangue|bioimpedancia|avaliacao|outro","data":"AAAA-MM-DD ou vazio","laboratorio":"nome ou vazio","itens":[{"nome":"Glicose","valor":"102","unidade":"mg/dL","referencia":"70 a 99","situacao":"normal|baixo|alto|sem_referencia"}],"observacao":"1 frase com o que chamou atenção, sem diagnóstico"}
-Copie valores e referências exatamente como estão. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Não invente itens que não aparecem.`;
-    const r = await ia.json(prompt, {images:imgs,onStatus:(t)=>{S.busy={tipo:'exame',txt:t};render();}});
-    if(!r||!Array.isArray(r.itens)) throw {code:'invalid_json'};
-    S.rascunho={id:uidGen(),tipo:r.tipo||tipoInf||'outro',data:r.data||dataInf||hoje(),laboratorio:r.laboratorio||'',observacao:r.observacao||'',itens:r.itens.map(i=>({nome:String(i.nome||''),valor:String(i.valor??''),unidade:String(i.unidade||''),referencia:String(i.referencia||''),situacao:String(i.situacao||'sem_referencia')}))};
-    S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
+    status('Abrindo o laudo…');
+    const {pags,total}=await listarPaginas(files);
+    if(!pags.length) throw {code:'image_rejected'};
+    const lotes=[]; for(let i=0;i<pags.length;i+=LOTE) lotes.push(pags.slice(i,i+LOTE));
+    const respostas=[], falhas=[]; let erroFatal=null;
+    for(let k=0;k<lotes.length;k++){
+      const ini=k*LOTE+1, fim=ini+lotes[k].length-1, faixa=ini===fim?'página '+ini:'páginas '+ini+' a '+fim;
+      const msg=pags.length<=LOTE?'Lendo os valores do laudo. Isso leva alguns segundos.':'Lendo '+faixa+' de '+pags.length+'…';
+      status(msg);
+      try{
+        const imgs=[]; for(const p of lotes[k]) imgs.push(await renderPagina(p));
+        const origem = 'As imagens anexas são as '+faixa+' de um laudo com '+pags.length+' páginas.';
+        let r;
+        try{ r=await ia.json(promptLaudo(origem,tipoInf,dataInf),{images:imgs,onStatus:status}); }
+        catch(e){
+          // limite por minuto do plano gratuito: espera e tenta uma vez
+          if(e&&e.code==='rate_limited'){ status('Limite por minuto da IA atingido. Aguardando 30 segundos para continuar…'); await espera(30000); status(msg); r=await ia.json(promptLaudo(origem,tipoInf,dataInf),{images:imgs,onStatus:status}); }
+          else throw e;
+        }
+        if(r&&Array.isArray(r.itens)) respostas.push(r); else falhas.push(faixa);
+      }catch(e){
+        const c=e&&e.code;
+        if(['sem_chave','chave','offline','cancelled','rate_limited','modelo'].includes(c)){ erroFatal=e; falhas.push('páginas '+ini+' em diante'); break; }
+        falhas.push(faixa);
+      }
+    }
+    if(!respostas.some(r=>r.itens.length)) throw erroFatal||{code:'invalid_json'};
+    const avisos=[];
+    if(total>pags.length) avisos.push('O laudo tem '+total+' páginas. Li as '+pags.length+' primeiras; envie o resto como outro exame.');
+    if(falhas.length) avisos.push('Não consegui ler: '+falhas.join(', ')+'. Confira esses valores no laudo e use "Digitar os valores" se faltar algo.');
+    abrirRevisao(respostas,tipoInf,dataInf,avisos);
   }catch(e){S.busy=null;S.erro=(e&&e.code==='pdf')?'Não consegui abrir esse PDF. Tente tirar uma foto das páginas.':erroIA(e);render();}
 }
 
-async function pdfParaImagens(file,max){
-  const lib=window.pdfjsLib; if(!lib) throw {code:'pdf'};
-  try{
-    lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    const pdf=await lib.getDocument({data:await file.arrayBuffer()}).promise;
-    const out=[];
-    for(let i=1;i<=Math.min(pdf.numPages,max);i++){
-      const pg=await pdf.getPage(i); const vp=pg.getViewport({scale:1.8});
-      const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height;
-      const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
-      await pg.render({canvasContext:ctx,viewport:vp}).promise;
-      out.push(await new Promise(r=>c.toBlob(r,'image/jpeg',0.85)));
-    }
-    return out.filter(Boolean);
-  }catch(e){throw {code:'pdf'};}
+function abrirRevisao(respostas,tipoInf,dataInf,avisos){
+  const pega=(campo)=>{for(const r of respostas){if(r[campo])return String(r[campo]);}return '';};
+  const vistos=new Set(), itens=[];
+  for(const r of respostas) for(const bruto of (r.itens||[])){
+    const i=limparItem(bruto); if(!i.nome) continue;
+    const chave=normNome(i.nome)+'|'+i.valor; if(vistos.has(chave)) continue; vistos.add(chave); itens.push(i);
+  }
+  const obs=respostas.map(r=>r.observacao).filter(Boolean).slice(0,2).join(' ');
+  S.rascunho={id:uidGen(),tipo:pega('tipo')||tipoInf||'outro',data:pega('data')||dataInf||hoje(),laboratorio:pega('laboratorio'),observacao:obs,itens,avisos};
+  S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
 }
 
 let chatCtl=null;
@@ -512,7 +561,7 @@ function telaExames(){
   const podeImg=true;
   o+=`<div class="card stack"><h3>Adicionar exame</h3>
     ${podeImg?`<label class="btn block" for="fArq" style="cursor:pointer">${ICON.up}Foto ou PDF do laudo</label><input id="fArq" class="sr" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
-    <p class="note">Até 5 páginas por vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
+    <p class="note">Até ${MAX_PAGINAS} páginas por laudo, em PDF ou várias fotos de uma vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
     <button class="btn ghost block" data-act="digitar"${S.busy?' disabled':''}>Digitar os valores</button></div>`;
   if(!S.exames.length){o+=`<div class="card stack-s"><h3>Nenhum exame ainda</h3><p class="small muted">Comece pela bioimpedância mais recente e pelo último exame de sangue. O avaliador compara os valores com as referências do próprio laudo.</p></div>`;return o;}
   o+=S.exames.map(e=>{
@@ -537,7 +586,8 @@ function telaDigitar(){
 
 function telaRevisar(){
   const r=S.rascunho;
-  return header('Confira os valores',true)+`<p class="muted">Compare com o laudo. Corrija o que estiver errado e apague o que não for exame.</p>
+  return header('Confira os valores',true)+`${(r.avisos||[]).map(a=>`<div class="alert warn">${ICON.warn}<span class="small">${h(a)}</span></div>`).join('')}
+  <p class="muted">${r.itens.length} valores encontrados. Compare com o laudo, corrija o que estiver errado e apague o que não for exame.</p>
   <form id="fRev" class="stack">
     <div class="grid2"><label class="f">Tipo<select id="rTipo">${Object.entries(TIPOS).map(([k,t])=>`<option value="${k}"${r.tipo===k?' selected':''}>${t}</option>`).join('')}</select></label>
     <label class="f">Data<input id="rData" type="date" value="${h(r.data)}"></label></div>
@@ -675,7 +725,7 @@ document.addEventListener('submit', async (ev)=>{
     lerExame(null,tx.slice(0,20000),document.getElementById('dTipo').value,document.getElementById('dData').value);
   }
   else if(f.id==='fRev'){
-    syncRev(); const r=S.rascunho; r.itens=r.itens.filter(i=>i.nome&&String(i.valor).trim());
+    syncRev(); const r=S.rascunho; delete r.avisos; r.itens=r.itens.filter(i=>i.nome&&String(i.valor).trim());
     S.exames=[r].concat(S.exames).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
     await save('exames',S.exames); S.rascunho=null; S.sub=null; S.tab='exames'; toast('Exame salvo.'); render(); window.scrollTo(0,0);
   }
