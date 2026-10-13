@@ -177,6 +177,9 @@ const PROV = {
   claude:{nome:'Anthropic Claude', modelo:'claude-sonnet-5-5', chave:'https://console.anthropic.com/settings/keys', dica:'Crie no Console da Anthropic › API keys. Cobrado por uso, com crédito pré-pago.'},
   openai:{nome:'OpenAI', modelo:'gpt-6-sol', chave:'https://platform.openai.com/api-keys', dica:'Crie na plataforma da OpenAI › API keys. Cobrado por uso, com crédito pré-pago.'}
 };
+// modelos alternativos, tentados em ordem quando o principal está sobrecarregado ou indisponível
+const RESERVA = { gemini:['gemini-3.6-flash','gemini-3.5-flash-lite'], claude:['claude-haiku-5-5'], openai:['gpt-6-luna'] };
+const espera = (ms,signal)=>new Promise((ok,err)=>{const t=setTimeout(ok,ms); if(signal) signal.addEventListener('abort',()=>{clearTimeout(t);err({code:'cancelled'});},{once:true});});
 const iaPronta = ()=>!!(S.cfg&&S.cfg.provedor&&S.cfg.chave);
 
 function blobParaB64(blob){return new Promise((ok,err)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>err({code:'image_rejected'});r.readAsDataURL(blob);});}
@@ -196,8 +199,30 @@ async function chamarIA(turns, opts){
   opts=opts||{};
   if(!iaPronta()) throw {code:'sem_chave'};
   if(!navigator.onLine) throw {code:'offline'};
-  const {provedor,chave}=S.cfg; const modelo=(S.cfg.modelo||PROV[provedor].modelo).trim();
+  const provedor=S.cfg.provedor; const escolhido=(S.cfg.modelo||'').trim();
+  // modelo escolhido pela pessoa: só ele. Modelo padrão: padrão e reservas.
+  const modelos = escolhido ? [escolhido] : [PROV[provedor].modelo].concat(RESERVA[provedor]||[]);
   const imgs=[]; for(const b of (opts.images||[])) imgs.push(await prepararImagem(b));
+  let ultimoErro=null;
+  for(let m=0;m<modelos.length;m++){
+    for(let tentativa=0;tentativa<2;tentativa++){
+      try{ return await chamarModelo(modelos[m], turns, imgs, opts); }
+      catch(e){
+        ultimoErro=e;
+        const passageiro = e && (e.code==='ocupado');
+        const trocar = passageiro || (e && e.code==='modelo' && m>0) || (e && e.code==='modelo' && !escolhido);
+        if(!trocar) throw e;
+        if(passageiro && tentativa===0){ if(opts.onStatus) opts.onStatus('Modelo ocupado. Tentando de novo…'); await espera(2500,opts.signal); continue; }
+        if(m<modelos.length-1 && opts.onStatus) opts.onStatus('Modelo ocupado. Usando um modelo alternativo…');
+        break;
+      }
+    }
+  }
+  throw ultimoErro||{code:'upstream_error'};
+}
+
+async function chamarModelo(modelo, turns, imgs, opts){
+  const {provedor,chave}=S.cfg;
   const last=turns.length-1;
   let url, headers, body;
   if(provedor==='gemini'){
@@ -223,6 +248,7 @@ async function chamarIA(turns, opts){
     const msg=(j&&(j.error&&(j.error.message||j.error.type)))||('HTTP '+r.status);
     if(r.status===401||r.status===403) throw {code:'chave',message:msg};
     if(r.status===404) throw {code:'modelo',message:msg};
+    if(r.status===503||r.status===529||r.status===500||/overload|high demand|unavailable|capacity/i.test(msg)) throw {code:'ocupado',message:msg};
     if(r.status===429) throw {code:'rate_limited',message:msg};
     if(r.status===400&&/key/i.test(msg)) throw {code:'chave',message:msg};
     if(r.status===413) throw {code:'prompt_too_large',message:msg};
@@ -254,6 +280,7 @@ function erroIA(e){
   if(c==='rede') return 'Não consegui falar com o serviço de IA. Confira a internet e tente de novo.';
   if(c==='chave') return 'A chave de API foi recusada. Confira se copiou inteira em Configurar IA.';
   if(c==='modelo') return 'O modelo informado não existe ou não está liberado para essa chave. Em Configurar IA, apague o campo Modelo para usar o padrão.';
+  if(c==='ocupado') return 'Os servidores da IA estão sobrecarregados agora. O app já tentou de novo e trocou de modelo. Espere alguns minutos e tente outra vez.';
   if(c==='rate_limited') return 'Limite de uso da IA atingido por enquanto. Espere alguns minutos ou confira seu crédito no site do provedor.';
   if(c==='image_rejected') return 'Não consegui ler esse arquivo. Tente uma foto mais nítida ou outro formato (JPG, PNG ou PDF).';
   if(c==='invalid_json'||c==='empty_completion') return 'A resposta da IA veio incompleta. Tente de novo.';
@@ -293,7 +320,7 @@ Monte o plano desta pessoa. Responda SOMENTE com um objeto JSON neste formato:
 "medico":["o que levar para conversar com o médico, se houver"]}
 Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, duração próxima de ${h(S.perfil.minutos||60)} minutos. 4 a 6 refeições. Se não houver exames, baseie-se no perfil e diga no resumo que exames deixariam o plano mais preciso.`;
   try{
-    const plano = await ia.json(prompt);
+    const plano = await ia.json(prompt,{onStatus:(t)=>{S.busy={tipo:'plano',txt:t};render();}});
     if(!plano||!plano.treino||!Array.isArray(plano.treino.dias)||!plano.dieta) throw {code:'invalid_json'};
     plano.criado=hoje();
     S.plano=plano; S.dia=null; S.feitos={};
@@ -326,7 +353,7 @@ ${tipoInf?'Tipo informado: '+tipoInf+'.':''} ${dataInf?'Data informada: '+dataIn
 Responda SOMENTE com JSON:
 {"tipo":"sangue|bioimpedancia|avaliacao|outro","data":"AAAA-MM-DD ou vazio","laboratorio":"nome ou vazio","itens":[{"nome":"Glicose","valor":"102","unidade":"mg/dL","referencia":"70 a 99","situacao":"normal|baixo|alto|sem_referencia"}],"observacao":"1 frase com o que chamou atenção, sem diagnóstico"}
 Copie valores e referências exatamente como estão. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Não invente itens que não aparecem.`;
-    const r = await ia.json(prompt, {images:imgs});
+    const r = await ia.json(prompt, {images:imgs,onStatus:(t)=>{S.busy={tipo:'exame',txt:t};render();}});
     if(!r||!Array.isArray(r.itens)) throw {code:'invalid_json'};
     S.rascunho={id:uidGen(),tipo:r.tipo||tipoInf||'outro',data:r.data||dataInf||hoje(),laboratorio:r.laboratorio||'',observacao:r.observacao||'',itens:r.itens.map(i=>({nome:String(i.nome||''),valor:String(i.valor??''),unidade:String(i.unidade||''),referencia:String(i.referencia||''),situacao:String(i.situacao||'sem_referencia')}))};
     S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
@@ -611,7 +638,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='testar'){
     lerCfgForm(); if(!S.cfg.chave){toast('Cole a chave primeiro.');return;}
     S.busy={txt:'Testando a conexão…'};S.erro=null;render();
-    try{await ia.chat([{role:'user',content:'Responda apenas: ok'}]);S.busy=null;render();toast('Conexão funcionando.');}
+    try{await ia.chat([{role:'user',content:'Responda apenas: ok'}],{onStatus:(t)=>{S.busy={txt:t};render();}});S.busy=null;render();toast('Conexão funcionando.');}
     catch(e){S.busy=null;S.erro=erroIA(e);render();}
   }
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
