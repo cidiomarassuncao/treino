@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Treino e Nutrição</title>
+<meta name="theme-color" content="#0F6B4F">
+<meta name="description" content="Treino e alimentação montados por IA a partir dos seus exames.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%;color-scheme:light}
+:root{padding-top:env(safe-area-inset-top,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+/* Layout: app de uma coluna em largura de celular, navegação fixa embaixo, cartões só onde há um objeto separado */
+:root{
+  --bg:#F2F4EF; --surface:#FFFFFF; --line:#DDE3DA; --fg:#15211C; --muted:#55635C; --faint:#7C8B83;
+  --accent:#0F6B4F; --accent-strong:#0A4F3A; --on-accent:#FFFFFF; --accent-soft:#DCEFE4; --accent-ink:#0A4F3A;
+  --hero:#15211C; --on-hero:#FFFFFF; --hero-muted:#C5D1CA;
+  --warn-soft:#FBE6D6; --warn-ink:#7A2E05; --bad-soft:#F8DADA; --bad-ink:#8A1C1C; --info-soft:#E3EAF5; --info-ink:#21406E;
+  --display:'Bricolage Grotesque', 'Trebuchet MS', sans-serif;
+  --body:'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1512; --surface:#18211C; --line:#2B3731; --fg:#E7EEEA; --muted:#A5B3AB; --faint:#7F8E86;
+  --accent:#4DB68A; --accent-strong:#6CCCA2; --on-accent:#08261A; --accent-soft:#1E3A2E; --accent-ink:#9BDEBF;
+  --hero:#22302A; --on-hero:#F1F6F3; --hero-muted:#B4C3BB;
+  --warn-soft:#3D2716; --warn-ink:#F6BE92; --bad-soft:#3E1D1D; --bad-ink:#F4A9A9; --info-soft:#1D2A3D; --info-ink:#A9C3EC;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1512; --surface:#18211C; --line:#2B3731; --fg:#E7EEEA; --muted:#A5B3AB; --faint:#7F8E86;
+  --accent:#4DB68A; --accent-strong:#6CCCA2; --on-accent:#08261A; --accent-soft:#1E3A2E; --accent-ink:#9BDEBF;
+  --hero:#22302A; --on-hero:#F1F6F3; --hero-muted:#B4C3BB;
+  --warn-soft:#3D2716; --warn-ink:#F6BE92; --bad-soft:#3E1D1D; --bad-ink:#F4A9A9; --info-soft:#1D2A3D; --info-ink:#A9C3EC;
+  color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+*{box-sizing:border-box}
+#app{max-width:540px;margin:0 auto;padding-inline:16px;padding-block:20px calc(96px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.15;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:700;font-size:20px;line-height:1.2}
+h3{font-size:15px;font-weight:700}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:13px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:12px} .stack-s{display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:10px} .between{justify-content:space-between}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.hero{background:var(--accent);color:var(--on-accent);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.hero .sub{color:var(--on-accent);opacity:.85;font-size:14px}
+.dark{background:var(--hero);color:var(--on-hero);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.dark .eyebrow{color:var(--hero-muted)}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile .num{font-family:var(--display);font-weight:700;font-size:23px;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile .num small{font-family:var(--body);font-size:13px;font-weight:500}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:14px;border:2px solid transparent;font:inherit;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;background:var(--accent);color:var(--on-accent)}
+.btn:hover{background:var(--accent-strong)}
+.btn.ghost{background:transparent;border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost:hover{background:var(--accent-soft)}
+.btn.light{background:var(--surface);color:var(--accent-ink)}
+.btn.plain{background:transparent;color:var(--muted);border-color:var(--line)}
+.btn.danger{background:transparent;border-color:var(--bad-ink);color:var(--bad-ink)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.55;cursor:default}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.iconbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.ok{background:var(--accent-soft);color:var(--accent-ink)} .warn{background:var(--warn-soft);color:var(--warn-ink)} .bad{background:var(--bad-soft);color:var(--bad-ink)} .info{background:var(--info-soft);color:var(--info-ink)}
+.list{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:0 16px}
+.list > .li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.list > .li:last-child{border-bottom:0}
+.li .txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.alert{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:16px}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;font-size:16px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-height:46px;width:100%}
+textarea{min-height:110px;resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:44px;padding:0 14px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.tabs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
+.tabs .chip{font-family:var(--display);font-size:17px;font-weight:700;min-height:48px}
+.ex{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.ex .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.check{width:44px;height:44px;flex:none;border-radius:50%;border:2px solid var(--faint);background:var(--surface);color:var(--on-accent);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.check[aria-pressed="true"]{border-color:var(--accent);background:var(--accent)}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;font-weight:600;color:var(--muted)}
+.dot{width:34px;height:34px;margin:6px auto 0;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px dashed var(--faint)}
+.dot.done{background:var(--accent-soft);color:var(--accent-ink);border:0}
+.dot.today{border:2px solid var(--accent)}
+.meal{display:flex;flex-direction:column;gap:6px}
+.meal ul{margin:0;padding-left:18px}
+.bubble{padding:12px 14px;border-radius:16px;max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.me{align-self:flex-end;background:var(--accent);color:var(--on-accent)}
+.bubble.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line)}
+.status{padding:12px 14px;border-radius:14px;font-size:14px}
+.spinner{width:18px;height:18px;border-radius:50%;border:3px solid currentColor;border-right-color:transparent;animation:spin .9s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spinner{animation-duration:3s}}
+.table-wrap{overflow-x:auto}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:0 8px env(safe-area-inset-bottom,0px);z-index:5}
+nav.bottom .in{max-width:540px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+nav.bottom button{background:none;border:0;font:inherit;font-size:12px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 0 10px;cursor:pointer;min-height:60px}
+nav.bottom button .bar{width:28px;height:3px;border-radius:0 0 3px 3px;background:transparent;margin-bottom:5px}
+nav.bottom button[aria-current="page"]{color:var(--accent-ink);font-weight:700}
+nav.bottom button[aria-current="page"] .bar{background:var(--accent)}
+.note{font-size:12px;color:var(--muted);line-height:1.4}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite">
+  <div class="stack" style="padding-top:40px">
+    <span class="eyebrow">Treino e Nutrição</span>
+    <h1>Carregando seus dados…</h1>
+    <p class="muted">Seu perfil, exames e plano aparecem aqui em instantes.</p>
+  </div>
+</div>
+<nav class="bottom" aria-label="Navegação principal" hidden>
+  <div class="in">
+    <button data-tab="inicio"><span class="bar"></span><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</button>
+    <button data-tab="exames"><span class="bar"></span><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>Exames</button>
+    <button data-tab="treino"><span class="bar"></span><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7v10M3 9.5v5M18 7v10M21 9.5v5M6 12h12"/></svg>Treino</button>
+    <button data-tab="dieta"><span class="bar"></span><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7a2 2 0 0 0 2 2v9M5 3v5M9 3v5M17 3c-2 2-3 4-3 7h3v11"/></svg>Alimentação</button>
+  </div>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $app = document.getElementById('app');
+const $nav = document.querySelector('nav.bottom');
+
+const S = {
+  ready:false, cfg:null,
+  tab:'inicio', sub:null,
+  perfil:null, exames:[], plano:null, registro:{treinos:[]},
+  dia:null, feitos:{}, busy:null, erro:null, rascunho:null, chat:[], confirmDel:null, editPerfil:false
+};
+
+/* ---------- utilidades ---------- */
+const h = (v)=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = (v,d=0)=>{const n=Number(v);return isFinite(n)?n.toLocaleString('pt-BR',{maximumFractionDigits:d}):'—';};
+const hoje = ()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const fmtData = (iso)=>{if(!iso)return '';const p=String(iso).split('-');if(p.length<3)return h(iso);const m=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+p[1]-1]||p[1];return (+p[2])+' '+m+' '+p[0];};
+const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const lsGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
+const lsSet=(k,v)=>{try{localStorage.setItem('tn:'+k,JSON.stringify(v));}catch(e){}};
+
+const ICON = {
+  check:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  warn:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  back:'<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+  user:'<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  chat:'<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  up:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>',
+  arrow:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 6l6 6-6 6"/></svg>'
+};
+
+/* ---------- armazenamento: só neste celular ---------- */
+async function load(name, fallback){ const v=lsGet(name); return v==null?fallback:v; }
+async function save(name, value){
+  try{ localStorage.setItem('tn:'+name, JSON.stringify(value)); }
+  catch(e){ toast('O celular não deixou salvar. Libere espaço ou apague exames antigos.'); }
+}
+
+/* ---------- IA ---------- */
+const PROV = {
+  gemini:{nome:'Google Gemini', modelo:'gemini-3.8-flash', chave:'https://aistudio.google.com/apikey', dica:'Crie em Google AI Studio › Get API key. Tem uma faixa gratuita.'},
+  claude:{nome:'Anthropic Claude', modelo:'claude-sonnet-5-5', chave:'https://console.anthropic.com/settings/keys', dica:'Crie no Console da Anthropic › API keys. Cobrado por uso, com crédito pré-pago.'},
+  openai:{nome:'OpenAI', modelo:'gpt-6-sol', chave:'https://platform.openai.com/api-keys', dica:'Crie na plataforma da OpenAI › API keys. Cobrado por uso, com crédito pré-pago.'}
+};
+const iaPronta = ()=>!!(S.cfg&&S.cfg.provedor&&S.cfg.chave);
+
+function blobParaB64(blob){return new Promise((ok,err)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>err({code:'image_rejected'});r.readAsDataURL(blob);});}
+async function prepararImagem(blob){
+  // reduz para no máximo 1600 px no lado maior e converte para JPEG
+  try{
+    const bmp=await createImageBitmap(blob);
+    const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas'); c.width=Math.round(bmp.width*k); c.height=Math.round(bmp.height*k);
+    const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bmp,0,0,c.width,c.height);
+    const out=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));
+    return {mime:'image/jpeg', data:await blobParaB64(out)};
+  }catch(e){ throw {code:'image_rejected'}; }
+}
+
+async function chamarIA(turns, opts){
+  opts=opts||{};
+  if(!iaPronta()) throw {code:'sem_chave'};
+  if(!navigator.onLine) throw {code:'offline'};
+  const {provedor,chave}=S.cfg; const modelo=(S.cfg.modelo||PROV[provedor].modelo).trim();
+  const imgs=[]; for(const b of (opts.images||[])) imgs.push(await prepararImagem(b));
+  const last=turns.length-1;
+  let url, headers, body;
+  if(provedor==='gemini'){
+    url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(modelo)+':generateContent';
+    headers={'content-type':'application/json','x-goog-api-key':chave};
+    body={contents:turns.map((t,i)=>({role:t.role==='assistant'?'model':'user',parts:[...(i===last?imgs.map(m=>({inline_data:{mime_type:m.mime,data:m.data}})):[]),{text:t.content}]})),
+          generationConfig:opts.json?{responseMimeType:'application/json'}:{}};
+  }else if(provedor==='claude'){
+    url='https://api.anthropic.com/v1/messages';
+    headers={'content-type':'application/json','x-api-key':chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+    body={model:modelo,max_tokens:opts.json?12000:1500,messages:turns.map((t,i)=>({role:t.role,content:[...(i===last?imgs.map(m=>({type:'image',source:{type:'base64',media_type:m.mime,data:m.data}})):[]),{type:'text',text:t.content}]}))};
+  }else{
+    url='https://api.openai.com/v1/chat/completions';
+    headers={'content-type':'application/json','authorization':'Bearer '+chave};
+    body={model:modelo,messages:turns.map((t,i)=>({role:t.role,content:[{type:'text',text:t.content},...(i===last?imgs.map(m=>({type:'image_url',image_url:{url:'data:'+m.mime+';base64,'+m.data}})):[])]}))};
+    if(opts.json) body.response_format={type:'json_object'};
+  }
+  let r;
+  try{ r=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:opts.signal}); }
+  catch(e){ if(e&&e.name==='AbortError') throw {code:'cancelled'}; throw {code:'rede'}; }
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(!r.ok){
+    const msg=(j&&(j.error&&(j.error.message||j.error.type)))||('HTTP '+r.status);
+    if(r.status===401||r.status===403) throw {code:'chave',message:msg};
+    if(r.status===404) throw {code:'modelo',message:msg};
+    if(r.status===429) throw {code:'rate_limited',message:msg};
+    if(r.status===400&&/key/i.test(msg)) throw {code:'chave',message:msg};
+    if(r.status===413) throw {code:'prompt_too_large',message:msg};
+    throw {code:'upstream_error',message:msg};
+  }
+  let txt='';
+  if(provedor==='gemini'){ const c=j&&j.candidates&&j.candidates[0]; txt=(c&&c.content&&c.content.parts||[]).map(p=>p.text||'').join(''); if(!txt&&j&&j.promptFeedback&&j.promptFeedback.blockReason) throw {code:'refused'}; }
+  else if(provedor==='claude'){ txt=(j&&j.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''); }
+  else { txt=j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''; }
+  if(!txt) throw {code:'empty_completion'};
+  return txt;
+}
+function extrairJSON(txt){
+  try{return JSON.parse(txt);}catch(e){}
+  const f=txt.match(/```(?:json)?\s*([\s\S]*?)```/); if(f){try{return JSON.parse(f[1]);}catch(e){}}
+  const a=txt.search(/[\{\[]/), b=Math.max(txt.lastIndexOf('}'),txt.lastIndexOf(']'));
+  if(a>=0&&b>a){try{return JSON.parse(txt.slice(a,b+1));}catch(e){}}
+  throw {code:'invalid_json'};
+}
+const ia = {
+  json: async (prompt,opts)=>extrairJSON(await chamarIA([{role:'user',content:prompt+'\n\nResponda apenas com o JSON, sem texto antes ou depois.'}],Object.assign({},opts,{json:true}))),
+  chat: (turns,opts)=>chamarIA(turns,opts)
+};
+
+function erroIA(e){
+  const c=e&&e.code;
+  if(c==='sem_chave') return 'Configure a IA antes: toque no ícone de pessoa › Configurar IA.';
+  if(c==='offline') return 'Sem internet. Conecte e tente de novo.';
+  if(c==='rede') return 'Não consegui falar com o serviço de IA. Confira a internet e tente de novo.';
+  if(c==='chave') return 'A chave de API foi recusada. Confira se copiou inteira em Configurar IA.';
+  if(c==='modelo') return 'O modelo informado não existe ou não está liberado para essa chave. Em Configurar IA, apague o campo Modelo para usar o padrão.';
+  if(c==='rate_limited') return 'Limite de uso da IA atingido por enquanto. Espere alguns minutos ou confira seu crédito no site do provedor.';
+  if(c==='image_rejected') return 'Não consegui ler esse arquivo. Tente uma foto mais nítida ou outro formato (JPG, PNG ou PDF).';
+  if(c==='invalid_json'||c==='empty_completion') return 'A resposta da IA veio incompleta. Tente de novo.';
+  if(c==='prompt_too_large') return 'Há informação demais para enviar de uma vez. Apague exames antigos e tente de novo.';
+  if(c==='refused') return 'A IA não aceitou esse pedido. Revise os dados e tente de novo.';
+  if(c==='cancelled') return null;
+  return 'A IA não respondeu agora'+(e&&e.message?' ('+String(e.message).slice(0,140)+')':'')+'. Tente de novo em alguns instantes.';
+}
+
+function contexto(){
+  const p=S.perfil||{};
+  const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,i.referencia,i.situacao].filter(Boolean).join(' | '))}));
+  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex);
+}
+
+const REGRAS = `Você atua ao mesmo tempo como nutricionista esportivo, avaliador físico e personal trainer, falando português do Brasil, com linguagem simples e direta.
+Regras de segurança, sempre:
+- Você orienta, não diagnostica nem prescreve remédio ou suplemento em dose terapêutica. Valores alterados viram "levar ao médico".
+- Valor muito fora da referência (ex.: glicemia acima de 126, pressão alta, hemoglobina muito baixa, creatinina alta, TGO/TGP muito altas) exige recomendar avaliação médica antes de aumentar a intensidade.
+- Déficit calórico moderado (no máximo cerca de 20% do gasto estimado). Nunca abaixo de 1.200 kcal para mulheres ou 1.500 kcal para homens.
+- Respeite lesões, dores e restrições informadas; troque exercícios que as agravem.
+- Use alimentos comuns no Brasil e exercícios que existam no local de treino informado.`;
+
+async function gerarPlano(){
+  if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
+  S.busy={tipo:'plano',txt:'Analisando seus dados e montando o plano. Leva cerca de um minuto.'};S.erro=null;render();
+  const dias = Math.max(2,Math.min(6,+(S.perfil.dias||3)));
+  const prompt = REGRAS+`
+
+${contexto()}
+
+Monte o plano desta pessoa. Responda SOMENTE com um objeto JSON neste formato:
+{"resumo":"2 a 3 frases sobre o estado atual e o caminho","alertas":[{"titulo":"curto","texto":"1 frase","nivel":"atencao|medico"}],
+"metas":{"peso_kg":numero ou null,"gordura_pct":numero ou null,"prazo_semanas":numero},
+"treino":{"divisao":"ex.: ABC","semanas":numero,"orientacao":"1 a 2 frases sobre carga e descanso","dias":[{"id":"A","titulo":"Peito e tríceps","duracao_min":numero,"exercicios":[{"nome":"","series":"4","reps":"8 a 10","descanso":"90 s","dica":"opcional, curta"}]}],"cardio":"recomendação de aeróbico semanal"},
+"dieta":{"calorias":numero,"proteina_g":numero,"carbo_g":numero,"gordura_g":numero,"agua_l":numero,"refeicoes":[{"nome":"Café da manhã","horario":"07:00","itens":["2 ovos mexidos","..."]}],"dicas":["..."]},
+"medico":["o que levar para conversar com o médico, se houver"]}
+Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, duração próxima de ${h(S.perfil.minutos||60)} minutos. 4 a 6 refeições. Se não houver exames, baseie-se no perfil e diga no resumo que exames deixariam o plano mais preciso.`;
+  try{
+    const plano = await ia.json(prompt);
+    if(!plano||!plano.treino||!Array.isArray(plano.treino.dias)||!plano.dieta) throw {code:'invalid_json'};
+    plano.criado=hoje();
+    S.plano=plano; S.dia=null; S.feitos={};
+    await save('plano',plano); lsSet('feitos',{});
+    S.busy=null; S.tab='inicio'; S.sub='analise'; render(); window.scrollTo(0,0);
+  }catch(e){S.busy=null;S.erro=erroIA(e);render();}
+}
+
+async function lerExame(files, texto, tipoInf, dataInf){
+  if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
+  S.busy={tipo:'exame',txt:'Lendo o laudo…'};S.erro=null;render();
+  try{
+    let imgs=[];
+    if(files&&files.length){
+      const max = 5;
+      for(const f of files){
+        if(imgs.length>=max)break;
+        if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+          S.busy.txt='Abrindo o PDF…';render();
+          const r=await pdfParaImagens(f,max-imgs.length);
+          imgs=imgs.concat(r);
+        }else imgs.push(f);
+      }
+      if(!imgs.length) throw {code:'image_rejected'};
+      S.busy.txt='Lendo os valores do laudo. Isso leva alguns segundos.';render();
+    }
+    const prompt = `Você extrai dados de laudos de saúde (exame de sangue, bioimpedância, avaliação física) em português.
+${imgs.length?'As imagens anexas são as páginas de um laudo.':'Texto digitado pela pessoa:\n"""'+texto+'"""'}
+${tipoInf?'Tipo informado: '+tipoInf+'.':''} ${dataInf?'Data informada: '+dataInf+'.':''}
+Responda SOMENTE com JSON:
+{"tipo":"sangue|bioimpedancia|avaliacao|outro","data":"AAAA-MM-DD ou vazio","laboratorio":"nome ou vazio","itens":[{"nome":"Glicose","valor":"102","unidade":"mg/dL","referencia":"70 a 99","situacao":"normal|baixo|alto|sem_referencia"}],"observacao":"1 frase com o que chamou atenção, sem diagnóstico"}
+Copie valores e referências exatamente como estão. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Não invente itens que não aparecem.`;
+    const r = await ia.json(prompt, {images:imgs});
+    if(!r||!Array.isArray(r.itens)) throw {code:'invalid_json'};
+    S.rascunho={id:uidGen(),tipo:r.tipo||tipoInf||'outro',data:r.data||dataInf||hoje(),laboratorio:r.laboratorio||'',observacao:r.observacao||'',itens:r.itens.map(i=>({nome:String(i.nome||''),valor:String(i.valor??''),unidade:String(i.unidade||''),referencia:String(i.referencia||''),situacao:String(i.situacao||'sem_referencia')}))};
+    S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
+  }catch(e){S.busy=null;S.erro=(e&&e.code==='pdf')?'Não consegui abrir esse PDF. Tente tirar uma foto das páginas.':erroIA(e);render();}
+}
+
+async function pdfParaImagens(file,max){
+  const lib=window.pdfjsLib; if(!lib) throw {code:'pdf'};
+  try{
+    lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf=await lib.getDocument({data:await file.arrayBuffer()}).promise;
+    const out=[];
+    for(let i=1;i<=Math.min(pdf.numPages,max);i++){
+      const pg=await pdf.getPage(i); const vp=pg.getViewport({scale:1.8});
+      const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height;
+      const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+      await pg.render({canvasContext:ctx,viewport:vp}).promise;
+      out.push(await new Promise(r=>c.toBlob(r,'image/jpeg',0.85)));
+    }
+    return out.filter(Boolean);
+  }catch(e){throw {code:'pdf'};}
+}
+
+let chatCtl=null;
+async function perguntar(texto){
+  if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
+  S.chat.push({role:'user',content:texto}); S.chat.push({role:'assistant',content:'',pend:true}); render();
+  const sys = REGRAS+'\n\n'+contexto()+'\nPLANO ATUAL: '+JSON.stringify(S.plano?{resumo:S.plano.resumo,treino:S.plano.treino,dieta:{calorias:S.plano.dieta.calorias,proteina_g:S.plano.dieta.proteina_g}}:null).slice(0,20000)+'\n\nResponda à pergunta abaixo em até 150 palavras, em texto simples sem markdown.';
+  const turns = S.chat.filter(m=>!m.pend).slice(-8).map((m,i,a)=>({role:m.role,content:(i===a.length-1&&m.role==='user')?sys+'\n\nPERGUNTA: '+m.content:m.content}));
+  while(turns.length&&turns[0].role!=='user')turns.shift();
+  const alvo=S.chat[S.chat.length-1];
+  chatCtl=new AbortController();
+  try{
+    const r=await ia.chat(turns,{signal:chatCtl.signal});
+    alvo.content=r; alvo.pend=false;
+  }catch(e){const m=erroIA(e); alvo.content=m||'Pergunta cancelada.'; alvo.pend=false;}
+  chatCtl=null; render();
+}
+
+/* ---------- telas ---------- */
+function header(titulo, voltar){
+  return `<div class="row" style="gap:4px">${voltar?`<button class="iconbtn" style="border:0;background:none;margin-left:-10px" data-act="voltar" aria-label="Voltar">${ICON.back}</button>`:''}<h1 style="font-size:${voltar?22:28}px;flex:1">${h(titulo)}</h1></div>`;
+}
+function statusBox(){
+  let o='';
+  if(S.busy) o+=`<div class="status info row" role="status"><span class="spinner" aria-hidden="true"></span><span>${h(S.busy.txt)}</span></div>`;
+  if(S.erro) o+=`<div class="status bad row" role="alert">${ICON.warn}<span style="flex:1">${h(S.erro)}</span><button class="iconbtn" style="width:36px;height:36px;background:transparent;border:0;color:inherit" data-act="fecharErro" aria-label="Fechar aviso">×</button></div>`;
+  return o;
+}
+const situ = (s)=>{s=String(s||'').toLowerCase();
+  if(s==='normal') return '<span class="pill ok">Na faixa</span>';
+  if(s==='baixo') return `<span class="pill warn">${ICON.warn.replace('20','14').replace('20','14')}Baixo</span>`;
+  if(s==='alto') return `<span class="pill warn">${ICON.warn.replace('20','14').replace('20','14')}Alto</span>`;
+  return '<span class="pill info">Sem ref.</span>';};
+const TIPOS={sangue:'Exame de sangue',bioimpedancia:'Bioimpedância',avaliacao:'Avaliação física',outro:'Outro exame'};
+
+function telaPerfil(){
+  const p=S.perfil||{};
+  const novo=!S.perfil;
+  const opt=(arr,v)=>arr.map(([k,t])=>`<option value="${k}"${String(v)===k?' selected':''}>${t}</option>`).join('');
+  return `${novo?`<div class="stack-s" style="padding-top:12px"><span class="eyebrow">Primeiro acesso</span><h1>Vamos conhecer você</h1><p class="muted">Com esses dados o avaliador monta treino e alimentação do seu jeito. Leva 1 minuto.</p></div>`:header('Seu perfil',true)}
+  <form id="fPerfil" class="stack" novalidate>
+    <label class="f">Como quer ser chamado<input id="pNome" name="nome" required value="${h(p.nome)}" autocomplete="given-name"></label>
+    <div class="grid2">
+      <label class="f">Sexo<select id="pSexo" name="sexo">${opt([['masculino','Masculino'],['feminino','Feminino']],p.sexo)}</select></label>
+      <label class="f">Idade<input id="pIdade" name="idade" type="number" inputmode="numeric" min="12" max="100" value="${h(p.idade)}"></label>
+      <label class="f">Altura (cm)<input id="pAltura" name="altura" type="number" inputmode="numeric" min="120" max="230" value="${h(p.altura)}"></label>
+      <label class="f">Peso (kg)<input id="pPeso" name="peso" type="number" inputmode="decimal" step="0.1" min="30" max="300" value="${h(p.peso)}"></label>
+    </div>
+    <label class="f">Objetivo principal<select id="pObj" name="objetivo">${opt([['perder gordura','Perder gordura'],['ganhar massa muscular','Ganhar massa muscular'],['recomposição corporal','Perder gordura e ganhar músculo'],['saúde e condicionamento','Saúde e condicionamento'],['força e desempenho','Força e desempenho']],p.objetivo)}</select></label>
+    <div class="grid2">
+      <label class="f">Experiência<select id="pNivel" name="nivel">${opt([['iniciante','Iniciante'],['intermediário','Intermediário'],['avançado','Avançado']],p.nivel)}</select></label>
+      <label class="f">Onde treina<select id="pLocal" name="local">${opt([['academia','Academia'],['casa com halteres','Casa com halteres'],['casa sem equipamento','Casa sem equipamento']],p.local)}</select></label>
+      <label class="f">Dias por semana<select id="pDias" name="dias">${opt([['2','2 dias'],['3','3 dias'],['4','4 dias'],['5','5 dias'],['6','6 dias']],p.dias||'4')}</select></label>
+      <label class="f">Tempo por treino<select id="pMin" name="minutos">${opt([['30','30 min'],['45','45 min'],['60','60 min'],['75','75 min'],['90','90 min']],p.minutos||'60')}</select></label>
+    </div>
+    <label class="f">Lesões, dores ou problemas de saúde<textarea id="pLesoes" name="lesoes" placeholder="Ex.: dor no joelho direito, hipertensão controlada">${h(p.lesoes)}</textarea></label>
+    <label class="f">Alimentação: o que não come ou prefere<textarea id="pAlim" name="alimentacao" placeholder="Ex.: não como peixe, prefiro almoçar fora, intolerância à lactose">${h(p.alimentacao)}</textarea></label>
+    <button class="btn block" type="submit">${novo?'Continuar':'Salvar perfil'}</button>
+    ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
+  </form>
+  ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?'Usando '+h(PROV[S.cfg.provedor].nome)+' · modelo '+h(S.cfg.modelo||PROV[S.cfg.provedor].modelo):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
+  <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
+  <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
+}
+
+function telaConfig(){
+  const c=S.cfg||{provedor:'gemini',chave:'',modelo:''}; const pv=PROV[c.provedor]||PROV.gemini;
+  const primeiro=!iaPronta();
+  return `${primeiro&&!S.editCfg?`<div class="stack-s" style="padding-top:12px"><span class="eyebrow">Último passo</span><h1>Escolha a IA</h1><p class="muted">O app usa a IA que você escolher, com a sua chave. A chave fica guardada só neste celular.</p></div>`:header('Configurar IA',true)}
+  ${statusBox()}
+  <form id="fCfg" class="stack" novalidate>
+    <fieldset class="stack-s" style="border:0;padding:0;margin:0"><legend class="small muted" style="font-weight:600;margin-bottom:6px">Provedor</legend>
+      <div class="chips">${Object.entries(PROV).map(([k,v])=>`<button type="button" class="chip" aria-pressed="${c.provedor===k}" data-act="prov" data-p="${k}">${h(v.nome)}</button>`).join('')}</div></fieldset>
+    <div class="card stack-s"><p class="small">${h(pv.dica)}</p><a class="small" href="${pv.chave}" target="_blank" rel="noopener" style="font-weight:700">Abrir página de chaves</a></div>
+    <label class="f">Chave de API<input id="cChave" type="password" autocomplete="off" spellcheck="false" value="${h(c.chave)}" placeholder="Cole a chave aqui"></label>
+    <label class="f">Modelo (opcional)<input id="cModelo" autocomplete="off" spellcheck="false" value="${h(c.modelo)}" placeholder="${h(pv.modelo)}"></label>
+    <p class="note">Deixe o modelo em branco para usar o padrão. Só troque se o provedor lançar um modelo novo ou desativar o atual.</p>
+    <div class="grid2"><button type="button" class="btn ghost" data-act="testar"${S.busy?' disabled':''}>Testar</button><button class="btn" type="submit">Salvar</button></div>
+    ${iaPronta()?'<button type="button" class="btn plain block" data-act="rmChave">Apagar chave deste celular</button>':''}
+    ${primeiro&&!S.editCfg?'<button type="button" class="btn plain block" data-act="pularCfg">Configurar depois</button>':''}
+  </form>`;
+}
+
+function semana(){
+  const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
+  const feitos=new Set((S.registro.treinos||[]).map(t=>t.data));
+  const nomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']; let c=0;
+  const cells=nomes.map((n,i)=>{const x=new Date(seg);x.setDate(seg.getDate()+i);const iso=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+    const ok=feitos.has(iso); if(ok)c++; const t=i===dow;
+    return `<div><span${t?' style="color:var(--fg);font-weight:700"':''}>${t?'Hoje':n}</span><span class="dot${ok?' done':''}${t&&!ok?' today':''}" role="img" aria-label="${n}: ${ok?'treino feito':'sem treino registrado'}">${ok?ICON.check.replace(/20/g,'16'):''}</span></div>`;}).join('');
+  return {cells,c};
+}
+function proximoDia(){
+  const dias=S.plano.treino.dias; const n=(S.registro.treinos||[]).length; return dias[n%dias.length];
+}
+
+function telaInicio(){
+  const p=S.perfil; const nome=(p.nome||'').split(' ')[0];
+  const dataTxt=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  let o=`<div class="row between"><div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">${h(dataTxt.charAt(0).toUpperCase()+dataTxt.slice(1))}</span><h1>Olá, ${h(nome)}</h1></div><button class="iconbtn" data-act="perfil" aria-label="Abrir seu perfil">${ICON.user}</button></div>`;
+  o+=statusBox();
+  if(!iaPronta()) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="config">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1"><strong>Configure a IA</strong><span class="small">Sem ela o app não lê exames nem monta o plano.</span></span>${ICON.arrow}</button>`;
+  if(!S.plano){
+    o+=`<div class="hero"><span class="eyebrow" style="color:inherit;opacity:.85">Próximo passo</span><h2>Monte seu plano de treino e alimentação</h2><p class="sub">${S.exames.length?`${S.exames.length} exame${S.exames.length>1?'s':''} cadastrado${S.exames.length>1?'s':''}. O avaliador vai usar tudo isso.`:'Dá para gerar só com o perfil, mas com bioimpedância e exame de sangue o plano fica mais preciso.'}</p>
+      <div class="grid2"><button class="btn light" data-act="gerar"${S.busy?' disabled':''}>Gerar plano</button><button class="btn light" style="background:transparent;color:inherit;border-color:currentColor" data-tab="exames">Adicionar exame</button></div></div>`;
+    return o;
+  }
+  const pl=S.plano; const prox=proximoDia(); const w=semana();
+  o+=`<div class="hero"><div class="stack-s" style="gap:2px"><span class="eyebrow" style="color:inherit;opacity:.85">Próximo treino</span><h2>Treino ${h(prox.id)} · ${h(prox.titulo)}</h2><span class="sub">${(prox.exercicios||[]).length} exercícios · cerca de ${h(prox.duracao_min||S.perfil.minutos)} minutos</span></div><button class="btn light block" data-act="abrirTreino" data-dia="${h(prox.id)}">Abrir treino</button></div>`;
+  o+=`<div class="grid2"><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Calorias do dia</span><span class="num">${num(pl.dieta.calorias)} <small>kcal</small></span></button><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Proteína</span><span class="num">${num(pl.dieta.proteina_g)} <small>g</small></span></button></div>`;
+  const al=(pl.alertas||[]);
+  if(al.length) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1;min-width:0"><strong>${al.length} ponto${al.length>1?'s':''} de atenção</strong><span class="small">${h(al.slice(0,2).map(a=>a.titulo).join(' e '))}</span></span>${ICON.arrow}</button>`;
+  else o+=`<button class="alert ok" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.check}<span style="flex:1"><strong>Ver análise completa</strong></span>${ICON.arrow}</button>`;
+  o+=`<div class="card stack"><div class="row between"><h3>Esta semana</h3><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos</span></div><div class="week">${w.cells}</div></div>`;
+  o+=`<button class="card row" style="font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%" data-act="chat">${ICON.chat}<span class="stack-s" style="gap:2px;flex:1"><strong>Pergunte ao instrutor</strong><span class="small muted">Troca de exercício, substituição de alimento, dúvidas do plano</span></span>${ICON.arrow}</button>`;
+  return o;
+}
+
+function telaAnalise(){
+  const pl=S.plano; const m=pl.metas||{};
+  let o=header('Análise e plano',true);
+  o+=`<div class="dark"><span class="eyebrow">Resumo do avaliador</span><p style="font-size:16px;line-height:1.5">${h(pl.resumo)}</p></div>`;
+  if(m.peso_kg||m.gordura_pct) o+=`<div class="grid3"><div class="tile"><span class="small muted" style="font-weight:600">Peso hoje</span><span class="num">${num(S.perfil.peso,1)} <small>kg</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Meta de peso</span><span class="num">${m.peso_kg?num(m.peso_kg,1):'—'} <small>kg</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Prazo</span><span class="num">${num(m.prazo_semanas)} <small>sem.</small></span></div></div>`;
+  if((pl.alertas||[]).length) o+=`<div class="stack-s"><h3 class="muted">Pontos de atenção</h3>${pl.alertas.map(a=>`<div class="alert ${a.nivel==='medico'?'bad':'warn'}">${ICON.warn}<span class="stack-s" style="gap:2px"><strong>${h(a.titulo)}</strong><span class="small">${h(a.texto)}</span></span></div>`).join('')}</div>`;
+  if((pl.medico||[]).length) o+=`<div class="card stack-s"><h3>Para conversar com o médico</h3><ul style="margin:0;padding-left:18px">${pl.medico.map(x=>`<li>${h(x)}</li>`).join('')}</ul></div>`;
+  o+=`<div class="grid2"><button class="btn" data-tab="treino">Ver treino</button><button class="btn ghost" data-tab="dieta">Ver alimentação</button></div>`;
+  o+=`<button class="btn plain block" data-act="gerar"${S.busy?' disabled':''}>Gerar o plano de novo com os dados atuais</button>`;
+  o+=`<p class="note">Plano gerado em ${fmtData(pl.criado)}. Orientação geral com base nos seus dados; não substitui a avaliação de médico ou nutricionista.</p>`;
+  return statusBox()+o;
+}
+
+function telaExames(){
+  let o=`<div class="stack-s" style="gap:2px"><h1>Exames</h1><span class="small muted">Bioimpedância, sangue e avaliação física</span></div>`;
+  o+=statusBox();
+  const podeImg=true;
+  o+=`<div class="card stack"><h3>Adicionar exame</h3>
+    ${podeImg?`<label class="btn block" for="fArq" style="cursor:pointer">${ICON.up}Foto ou PDF do laudo</label><input id="fArq" class="sr" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+    <p class="note">Até 5 páginas por vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
+    <button class="btn ghost block" data-act="digitar"${S.busy?' disabled':''}>Digitar os valores</button></div>`;
+  if(!S.exames.length){o+=`<div class="card stack-s"><h3>Nenhum exame ainda</h3><p class="small muted">Comece pela bioimpedância mais recente e pelo último exame de sangue. O avaliador compara os valores com as referências do próprio laudo.</p></div>`;return o;}
+  o+=S.exames.map(e=>{
+    const alt=(e.itens||[]).filter(i=>i.situacao==='alto'||i.situacao==='baixo').length;
+    return `<div class="stack-s"><div class="row between"><h3>${h(TIPOS[e.tipo]||'Exame')} · ${fmtData(e.data)}</h3>${alt?`<span class="pill warn">${alt} fora da faixa</span>`:'<span class="pill ok">Tudo na faixa</span>'}</div>
+    ${e.observacao?`<p class="small muted">${h(e.observacao)}</p>`:''}
+    <details class="list"${S.confirmDel===e.id?' open':''}><summary class="li" style="cursor:pointer;list-style:none"><span class="small" style="font-weight:700;color:var(--accent-ink)">Ver ${(e.itens||[]).length} valores</span>${ICON.arrow}</summary>
+    ${(e.itens||[]).map(i=>`<div class="li"><span class="txt"><strong style="font-size:15px">${h(i.nome)}</strong><span class="small muted">${h(i.valor)} ${h(i.unidade)}${i.referencia?' · ref. '+h(i.referencia):''}</span></span>${situ(i.situacao)}</div>`).join('')}
+    <div class="li">${S.confirmDel===e.id?`<span class="small">Apagar este exame?</span><span class="row"><button class="btn plain" style="min-height:44px" data-act="cancelDel">Não</button><button class="btn danger" style="min-height:44px" data-act="delExame" data-id="${h(e.id)}">Apagar</button></span>`:`<span></span><button class="btn plain" style="min-height:44px" data-act="askDel" data-id="${h(e.id)}">Apagar exame</button>`}</div>
+    </details></div>`;}).join('');
+  if(S.plano) o+=`<p class="note">Adicionou exame novo? Gere o plano de novo em Início › Ver análise para que ele entre na conta.</p>`;
+  return o;
+}
+
+function telaDigitar(){
+  return header('Digitar valores',true)+statusBox()+`<form id="fDig" class="stack">
+  <div class="grid2"><label class="f">Tipo<select id="dTipo">${Object.entries(TIPOS).map(([k,t])=>`<option value="${k}">${t}</option>`).join('')}</select></label>
+  <label class="f">Data do exame<input id="dData" type="date" value="${hoje()}"></label></div>
+  <label class="f">Valores<textarea id="dTexto" style="min-height:180px" placeholder="Um por linha, do jeito que está no laudo. Ex.:&#10;Glicose 102 mg/dL (70 a 99)&#10;Vitamina D 19 ng/mL&#10;Gordura corporal 22,8%"></textarea></label>
+  <button class="btn block" type="submit"${S.busy?' disabled':''}>Organizar valores</button></form>`;
+}
+
+function telaRevisar(){
+  const r=S.rascunho;
+  return header('Confira os valores',true)+`<p class="muted">Compare com o laudo. Corrija o que estiver errado e apague o que não for exame.</p>
+  <form id="fRev" class="stack">
+    <div class="grid2"><label class="f">Tipo<select id="rTipo">${Object.entries(TIPOS).map(([k,t])=>`<option value="${k}"${r.tipo===k?' selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="f">Data<input id="rData" type="date" value="${h(r.data)}"></label></div>
+    <div class="list">${r.itens.map((i,ix)=>`<div class="li" style="flex-wrap:wrap"><span class="txt" style="flex:1 1 140px"><strong>${h(i.nome)}</strong><span class="small muted">${i.referencia?'ref. '+h(i.referencia):'sem referência'}</span></span>
+      <span class="row" style="flex:1 1 170px"><label class="sr" for="rv${ix}">Valor de ${h(i.nome)}</label><input id="rv${ix}" data-ix="${ix}" class="rv" value="${h(i.valor)}" style="flex:1;min-width:0"><span class="small muted" style="min-width:44px">${h(i.unidade)}</span><button type="button" class="iconbtn" data-act="rmItem" data-ix="${ix}" aria-label="Remover ${h(i.nome)}">×</button></span></div>`).join('')||'<div class="li"><span class="small muted">Nenhum valor encontrado.</span></div>'}</div>
+    <div class="grid2"><button type="button" class="btn plain" data-act="voltar">Descartar</button><button class="btn" type="submit"${r.itens.length?'':' disabled'}>Salvar exame</button></div>
+  </form>`;
+}
+
+function telaTreino(){
+  if(!S.plano) return `<h1>Treino</h1>${semPlano()}`;
+  const t=S.plano.treino; if(!S.dia) S.dia=proximoDia().id;
+  const d=t.dias.find(x=>x.id===S.dia)||t.dias[0];
+  const ex=d.exercicios||[]; const feitos=ex.filter((_,i)=>S.feitos[d.id+i]).length;
+  let o=`<div class="stack-s" style="gap:2px"><h1>Treino</h1><span class="small muted" style="font-weight:600">Divisão ${h(t.divisao||t.dias.map(x=>x.id).join(''))}${t.semanas?' · '+h(t.semanas)+' semanas':''}</span></div>`;
+  o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}">${h(x.id)}</button>`).join('')}</div>`;
+  o+=`<div class="row between" style="align-items:flex-end"><div class="stack-s" style="gap:2px"><h2>Treino ${h(d.id)} · ${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
+  if(t.orientacao) o+=`<p class="status ok">${h(t.orientacao)}</p>`;
+  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="ex"><span class="txt"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div>`;}).join('')}</div>`;
+  const jaHoje=(S.registro.treinos||[]).some(x=>x.data===hoje());
+  o+=jaHoje?`<p class="status ok row">${ICON.check}<span>Treino de hoje registrado. Bom trabalho.</span></p>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
+  if(t.cardio) o+=`<div class="card stack-s"><h3>Aeróbico</h3><p class="small">${h(t.cardio)}</p></div>`;
+  o+=`<p class="note">Sentiu dor articular ou tontura, pare o exercício. Peça uma troca em Início › Pergunte ao instrutor.</p>`;
+  return o;
+}
+
+function telaDieta(){
+  if(!S.plano) return `<h1>Alimentação</h1>${semPlano()}`;
+  const d=S.plano.dieta;
+  let o=`<div class="stack-s" style="gap:2px"><h1>Alimentação</h1><span class="small muted" style="font-weight:600">Metas diárias</span></div>`;
+  o+=`<div class="grid2"><div class="tile"><span class="small muted" style="font-weight:600">Calorias</span><span class="num">${num(d.calorias)} <small>kcal</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Água</span><span class="num">${num(d.agua_l,1)} <small>litros</small></span></div></div>`;
+  o+=`<div class="grid3"><div class="tile"><span class="small muted" style="font-weight:600">Proteína</span><span class="num">${num(d.proteina_g)} <small>g</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Carboidrato</span><span class="num">${num(d.carbo_g)} <small>g</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Gordura</span><span class="num">${num(d.gordura_g)} <small>g</small></span></div></div>`;
+  o+=`<div class="stack-s"><h3 class="muted">Cardápio de referência</h3><div class="list">${(d.refeicoes||[]).map(r=>`<div class="li" style="align-items:flex-start"><div class="meal" style="min-width:0;flex:1"><div class="row between"><strong>${h(r.nome)}</strong><span class="small muted" style="font-variant-numeric:tabular-nums">${h(r.horario||'')}</span></div><ul class="small">${(r.itens||[]).map(x=>`<li>${h(x)}</li>`).join('')}</ul></div></div>`).join('')}</div></div>`;
+  if((d.dicas||[]).length) o+=`<div class="card stack-s"><h3>Dicas</h3><ul style="margin:0;padding-left:18px" class="small">${d.dicas.map(x=>`<li>${h(x)}</li>`).join('')}</ul></div>`;
+  o+=`<p class="note">Quer trocar um alimento? Pergunte ao instrutor na tela inicial. Este cardápio é uma referência geral e não substitui um nutricionista.</p>`;
+  return o;
+}
+
+function semPlano(){return `<div class="card stack"><p>Seu plano ainda não foi gerado.</p><button class="btn" data-tab="inicio">Ir para o início</button></div>`;}
+
+function telaChat(){
+  let o=header('Pergunte ao instrutor',true);
+  o+=`<div class="stack" style="gap:10px">${S.chat.length?S.chat.map((m,i)=>`<div class="bubble ${m.role==='user'?'me':'ai'}"${i===S.chat.length-1&&m.role==='assistant'?' id="ultima"':''}>${m.pend&&!m.content?'Pensando…':h(m.content)}</div>`).join(''):`<div class="card stack-s"><p class="small muted">Exemplos do que dá para perguntar:</p><div class="chips">${['Posso trocar o agachamento? Meu joelho dói','O que como antes de treinar de manhã?','Estou sem tempo hoje, faço qual versão curta?'].map(q=>`<button class="chip" style="font-weight:500;text-align:left" data-act="sugestao">${h(q)}</button>`).join('')}</div></div>`}</div>`;
+  const pend=S.chat.some(m=>m.pend);
+  o+=`<form id="fChat" class="row" style="align-items:flex-end"><label class="sr" for="cMsg">Sua pergunta</label><textarea id="cMsg" style="min-height:48px;height:48px;flex:1" placeholder="Escreva sua pergunta"></textarea>${pend?'<button type="button" class="btn plain" data-act="parar">Parar</button>':'<button class="btn" type="submit">Enviar</button>'}</form>`;
+  return o;
+}
+
+/* ---------- render ---------- */
+function render(){
+  if(!S.ready) return;
+  let html;
+  if(!S.perfil||S.editPerfil){ html=telaPerfil(); $nav.hidden=!S.perfil; }
+  else if(S.editCfg||!S.cfgVisto){ html=telaConfig(); $nav.hidden=!S.cfgVisto; }
+  else{
+    $nav.hidden=false;
+    if(S.sub==='analise'&&S.plano) html=telaAnalise();
+    else if(S.sub==='chat') html=telaChat();
+    else if(S.sub==='digitar') html=telaDigitar();
+    else if(S.sub==='revisar'&&S.rascunho) html=telaRevisar();
+    else html={inicio:telaInicio,exames:telaExames,treino:telaTreino,dieta:telaDieta}[S.tab]();
+  }
+  $app.innerHTML=html;
+  document.querySelectorAll('nav.bottom [data-tab]').forEach(b=>{if(b.dataset.tab===S.tab&&!S.sub&&!S.editPerfil&&!S.editCfg)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+}
+
+let toastT=null;
+function toast(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='toast';el.setAttribute('role','status');el.style.cssText='position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));max-width:500px;margin:0 auto;padding:12px 16px;border-radius:14px;background:var(--hero);color:var(--on-hero);font-weight:600;z-index:9';document.body.appendChild(el);}
+  el.textContent=msg;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{el.hidden=true;},3500);}
+
+/* ---------- eventos ---------- */
+document.addEventListener('click', async (ev)=>{
+  const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
+  if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
+  const a=t.dataset.act;
+  if(a==='voltar'){ if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
+  else if(a==='perfil'){S.editPerfil=true;render();window.scrollTo(0,0);}
+  else if(a==='gerar'){ gerarPlano(); }
+  else if(a==='analise'){S.sub='analise';render();window.scrollTo(0,0);}
+  else if(a==='chat'){S.sub='chat';render();window.scrollTo(0,0);}
+  else if(a==='abrirTreino'){S.tab='treino';S.dia=t.dataset.dia;S.sub=null;render();window.scrollTo(0,0);}
+  else if(a==='dia'){S.dia=t.dataset.dia;render();}
+  else if(a==='feito'){S.feitos[t.dataset.k]=!S.feitos[t.dataset.k];lsSet('feitos',S.feitos);render();}
+  else if(a==='concluir'){
+    const lista=(S.registro.treinos||[]).concat([{data:hoje(),dia:t.dataset.dia}]).slice(-200);
+    S.registro={treinos:lista}; S.feitos={}; lsSet('feitos',{}); S.dia=null; await save('registro',S.registro); toast('Treino registrado.'); render();
+  }
+  else if(a==='digitar'){S.sub='digitar';S.erro=null;render();window.scrollTo(0,0);}
+  else if(a==='rmItem'){syncRev();S.rascunho.itens.splice(+t.dataset.ix,1);render();}
+  else if(a==='askDel'){S.confirmDel=t.dataset.id;render();}
+  else if(a==='cancelDel'){S.confirmDel=null;render();}
+  else if(a==='delExame'){S.exames=S.exames.filter(e=>e.id!==t.dataset.id);S.confirmDel=null;await save('exames',S.exames);toast('Exame apagado.');render();}
+  else if(a==='fecharErro'){S.erro=null;render();}
+  else if(a==='sugestao'){perguntar(t.textContent.trim());}
+  else if(a==='parar'){if(chatCtl)chatCtl.abort();}
+  else if(a==='config'){S.editPerfil=false;S.editCfg=true;S.erro=null;S.cfg=S.cfg||{provedor:'gemini',chave:'',modelo:''};render();window.scrollTo(0,0);}
+  else if(a==='prov'){lerCfgForm();S.cfg.provedor=t.dataset.p;S.cfg.modelo='';render();}
+  else if(a==='testar'){
+    lerCfgForm(); if(!S.cfg.chave){toast('Cole a chave primeiro.');return;}
+    S.busy={txt:'Testando a conexão…'};S.erro=null;render();
+    try{await ia.chat([{role:'user',content:'Responda apenas: ok'}]);S.busy=null;render();toast('Conexão funcionando.');}
+    catch(e){S.busy=null;S.erro=erroIA(e);render();}
+  }
+  else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
+  else if(a==='rmChave'){S.cfg={provedor:S.cfg.provedor,chave:'',modelo:''};lsSet('cfg',S.cfg);toast('Chave apagada.');render();}
+  else if(a==='exportar'){
+    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,exames:S.exames,plano:S.plano,registro:S.registro};
+    const blob=new Blob([JSON.stringify(dados,null,1)],{type:'application/json'});
+    const u=URL.createObjectURL(blob); const ln=document.createElement('a'); ln.href=u; ln.download='treino-nutricao-'+hoje()+'.json';
+    document.body.appendChild(ln); ln.click(); ln.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000);
+    toast('Cópia salva em Downloads. A chave de API não vai junto.');
+  }
+});
+
+function syncRev(){document.querySelectorAll('.rv').forEach(i=>{const r=S.rascunho.itens[+i.dataset.ix];if(r)r.valor=i.value;});const tp=document.getElementById('rTipo'),dt=document.getElementById('rData');if(tp)S.rascunho.tipo=tp.value;if(dt)S.rascunho.data=dt.value;}
+
+function lerCfgForm(){const k=document.getElementById('cChave'),m=document.getElementById('cModelo');S.cfg=S.cfg||{provedor:'gemini'};if(k)S.cfg.chave=k.value.trim();if(m)S.cfg.modelo=m.value.trim();}
+
+document.addEventListener('submit', async (ev)=>{
+  ev.preventDefault(); const f=ev.target;
+  if(f.id==='fCfg'){
+    lerCfgForm(); if(!S.cfg.chave){document.getElementById('cChave').focus();toast('Cole a chave de API.');return;}
+    lsSet('cfg',S.cfg); const primeiro=!S.cfgVisto; S.cfgVisto=true; lsSet('cfgVisto',true); S.editCfg=false; S.erro=null;
+    toast(primeiro?'Tudo pronto. Agora é só adicionar exames ou gerar o plano.':'Configuração salva.'); S.tab='inicio'; S.sub=null; render(); window.scrollTo(0,0); return;
+  }
+  if(f.id==='fPerfil'){
+    const g=(id)=>document.getElementById(id).value.trim();
+    if(!g('pNome')){document.getElementById('pNome').focus();toast('Preencha como quer ser chamado.');return;}
+    const novo=!S.perfil;
+    S.perfil={nome:g('pNome'),sexo:g('pSexo'),idade:g('pIdade'),altura:g('pAltura'),peso:g('pPeso'),objetivo:g('pObj'),nivel:g('pNivel'),local:g('pLocal'),dias:g('pDias'),minutos:g('pMin'),lesoes:g('pLesoes'),alimentacao:g('pAlim')};
+    S.editPerfil=false; await save('perfil',S.perfil); if(!novo) toast('Perfil salvo.'); S.tab='inicio'; S.sub=null; render(); window.scrollTo(0,0);
+  }
+  else if(f.id==='fDig'){
+    const tx=document.getElementById('dTexto').value.trim(); if(!tx){toast('Digite pelo menos um valor.');return;}
+    lerExame(null,tx.slice(0,20000),document.getElementById('dTipo').value,document.getElementById('dData').value);
+  }
+  else if(f.id==='fRev'){
+    syncRev(); const r=S.rascunho; r.itens=r.itens.filter(i=>i.nome&&String(i.valor).trim());
+    S.exames=[r].concat(S.exames).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+    await save('exames',S.exames); S.rascunho=null; S.sub=null; S.tab='exames'; toast('Exame salvo.'); render(); window.scrollTo(0,0);
+  }
+  else if(f.id==='fChat'){
+    const el=document.getElementById('cMsg'); const q=el.value.trim(); if(!q||S.chat.some(m=>m.pend))return; perguntar(q.slice(0,2000));
+  }
+});
+document.addEventListener('change',(ev)=>{
+  if(ev.target.id==='fArq'&&ev.target.files&&ev.target.files.length){ const fs=Array.from(ev.target.files); ev.target.value=''; lerExame(fs); }
+  if(ev.target.id==='fImp'&&ev.target.files&&ev.target.files[0]){
+    const f=ev.target.files[0]; ev.target.value='';
+    f.text().then(async tx=>{
+      let d; try{d=JSON.parse(tx);}catch(e){toast('Esse arquivo não é uma cópia do app.');return;}
+      if(!d||d.app!=='treino-nutricao'){toast('Esse arquivo não é uma cópia do app.');return;}
+      S.perfil=d.perfil||S.perfil; S.exames=Array.isArray(d.exames)?d.exames:[]; S.plano=d.plano||null; S.registro=d.registro&&d.registro.treinos?d.registro:{treinos:[]};
+      await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro);
+      S.editPerfil=false; S.tab='inicio'; toast('Cópia restaurada.'); render();
+    });
+  }
+});
+
+/* ---------- início ---------- */
+async function boot(){
+  const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
+  S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
+  S.feitos=lsGet('feitos')||{}; S.cfg=lsGet('cfg'); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
+  if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
+  S.ready=true; render();
+  if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+}
+boot();
+})();
+</script>
+</body>
+</html>
