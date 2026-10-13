@@ -41,7 +41,17 @@ No app, toque em **Testar** antes de salvar. Se der "chave recusada", copie a ch
 
 Envie o `index.html` novo para o mesmo repositório (**Add file › Upload files**, substituindo o antigo). Os celulares pegam a versão nova na próxima vez que abrirem o app com internet. Os dados de cada pessoa continuam lá.
 
-## 5. Cópia de segurança
+## 5. Senha e código de recuperação
+
+Na primeira abertura, o app pede para criar uma senha. Ela criptografa perfil, exames, plano e chave de IA no celular. O app pede a senha ao abrir e depois de 5 minutos fora dele.
+
+Ao criar a senha, o app gera um **código de recuperação** de 20 caracteres e abre seu e-mail com o código pronto para você mesmo. Envie e guarde esse e-mail. Se esquecer a senha, toque em **Esqueci a senha** e digite o código para criar uma senha nova sem perder nada.
+
+Sem a senha e sem o código, ninguém consegue abrir os dados, nem você. Nesse caso, o único caminho é apagar tudo e restaurar uma cópia de segurança.
+
+Em **Perfil › Senha e recuperação** dá para trocar a senha, bloquear o app na hora e gerar um código novo (o antigo deixa de valer).
+
+## 6. Cópia de segurança
 
 Os dados ficam só no celular. Em **Perfil › Salvar cópia**, o app baixa um arquivo `.json` com perfil, exames e plano (a chave não vai junto). Para trocar de celular, instale o app no novo aparelho e use **Restaurar cópia**.
 
