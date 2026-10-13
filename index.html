@@ -275,22 +275,39 @@ async function prepararImagem(blob){
   }catch(e){ throw {code:'image_rejected'}; }
 }
 
+// Modelos que bateram o limite ficam de fora até a cota voltar (guardado fora do cofre: não é dado pessoal)
+function esgotados(){ const e=rawGet('esgotado')||{}; const agora=Date.now(); for(const k in e){ if(e[k]<=agora) delete e[k]; } return e; }
+function marcarEsgotado(modelo,msg){
+  const e=esgotados(); let ate;
+  if(/per ?day|daily|PerDay/i.test(msg||'')){
+    // cota diária do Google renova à meia-noite do horário do Pacífico (~08:00 UTC)
+    const d=new Date(); d.setUTCHours(8,0,0,0); if(d.getTime()<=Date.now()) d.setUTCDate(d.getUTCDate()+1); ate=d.getTime();
+  } else ate=Date.now()+90*1000;   // limite por minuto
+  e[modelo]=ate; try{ rawSet('esgotado',e); }catch(_){}
+}
+
 async function chamarIA(turns, opts){
   opts=opts||{};
   if(!iaPronta()) throw {code:'sem_chave'};
   if(!navigator.onLine) throw {code:'offline'};
   const provedor=S.cfg.provedor; const escolhido=(S.cfg.modelo||'').trim();
-  // modelo escolhido pela pessoa: só ele. Modelo padrão: padrão e reservas.
-  const modelos = escolhido ? [escolhido] : [PROV[provedor].modelo].concat(RESERVA[provedor]||[]);
+  // ordem: modelo escolhido (ou o padrão) e depois os mais leves do mesmo provedor
+  const lista=[escolhido||PROV[provedor].modelo].concat((RESERVA[provedor]||[]).filter(x=>x!==escolhido));
+  const fora=esgotados();
+  let modelos=lista.filter(x=>!fora[x]); if(!modelos.length) modelos=lista.slice(-1);   // todos esgotados: tenta o mais leve mesmo assim
   const imgs=[]; for(const b of (opts.images||[])) imgs.push(await prepararImagem(b));
   let ultimoErro=null;
   for(let m=0;m<modelos.length;m++){
     for(let tentativa=0;tentativa<2;tentativa++){
-      try{ return await chamarModelo(modelos[m], turns, imgs, opts); }
-      catch(e){
-        ultimoErro=e;
-        const passageiro = e && (e.code==='ocupado');
-        const trocar = passageiro || (e && e.code==='modelo' && m>0) || (e && e.code==='modelo' && !escolhido);
+      try{
+        const txt=await chamarModelo(modelos[m], turns, imgs, opts);
+        if(modelos[m]!==lista[0]) avisarModeloLeve(modelos[m]);
+        return txt;
+      }catch(e){
+        ultimoErro=e; const c=e&&e.code;
+        if(c==='rate_limited'){ marcarEsgotado(modelos[m],e.message); if(m<modelos.length-1&&opts.onStatus) opts.onStatus('Limite do modelo atingido. Trocando para um modelo mais leve…'); break; }
+        const passageiro = c==='ocupado';
+        const trocar = passageiro || c==='modelo';
         if(!trocar) throw e;
         if(passageiro && tentativa===0){ if(opts.onStatus) opts.onStatus('Modelo ocupado. Tentando de novo…'); await espera(2500,opts.signal); continue; }
         if(m<modelos.length-1 && opts.onStatus) opts.onStatus('Modelo ocupado. Usando um modelo alternativo…');
@@ -299,6 +316,13 @@ async function chamarIA(turns, opts){
     }
   }
   throw ultimoErro||{code:'upstream_error'};
+}
+let avisouLeve=false;
+function avisarModeloLeve(modelo){
+  if(avisouLeve) return; avisouLeve=true;
+  const ate=(rawGet('esgotado')||{})[S.cfg.modelo||PROV[S.cfg.provedor].modelo];
+  const quando=ate&&ate-Date.now()>3600e3?' até a cota renovar, por volta das '+new Date(ate).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+(new Date(ate).getDate()!==new Date().getDate()?' de amanhã':''):' por enquanto';
+  setTimeout(()=>toast('Limite do modelo principal atingido. Usando '+modelo+quando+'.'),400);
 }
 
 async function chamarModelo(modelo, turns, imgs, opts){
@@ -361,7 +385,7 @@ function erroIA(e){
   if(c==='chave') return 'A chave de API foi recusada. Confira se copiou inteira em Configurar IA.';
   if(c==='modelo') return 'O modelo informado não existe ou não está liberado para essa chave. Em Configurar IA, apague o campo Modelo para usar o padrão.';
   if(c==='ocupado') return 'Os servidores da IA estão sobrecarregados agora. O app já tentou de novo e trocou de modelo. Espere alguns minutos e tente outra vez.';
-  if(c==='rate_limited') return 'Limite de uso da IA atingido por enquanto. Espere alguns minutos ou confira seu crédito no site do provedor.';
+  if(c==='rate_limited') return 'Todos os modelos atingiram o limite de uso gratuito. A cota renova no dia seguinte. Para não parar, ative a cobrança no site do provedor.';
   if(c==='image_rejected') return 'Não consegui ler esse arquivo. Tente uma foto mais nítida ou outro formato (JPG, PNG ou PDF).';
   if(c==='invalid_json'||c==='empty_completion') return 'A resposta da IA veio incompleta. Tente de novo.';
   if(c==='prompt_too_large') return 'Há informação demais para enviar de uma vez. Apague exames antigos e tente de novo.';
