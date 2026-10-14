@@ -677,6 +677,139 @@ function refDaPessoa(ref, perfil){
   return (cand.length && cand.length < partes.length) ? cand.join('; ') : String(ref||'');
 }
 
+/* ---------- bioimpedância no formato do relatório Pratique ----------
+   Os números das barras da página 1 vêm como imagem: o leitor devolve esses itens em branco
+   (lista "faltando") para a IA ler só essa página, ou para a pessoa digitar na revisão. */
+const virgula=(v)=>String(v).replace('.',',');
+const BIO_CAMPOS=[ // nome no app, unidade, trecho da descrição no relatório, lido como imagem?
+  ['Peso','kg','Massa atual do corpo',false],
+  ['Gordura corporal','%','Porcentagem de gordura corporal',false],
+  ['Massa muscular','%','Porcentagem muscular',true],
+  ['Água corporal','%','de água no peso total',true],
+  ['Gordura visceral','nível','Gordura ao redor dos órgãos',true],
+  ['Gordura subcutânea','%','Teor de gordura sob o tecido',true],
+  ['Peso magro','kg','Peso das partes não adiposas',false],
+  ['Proteína','%','Componente importante das células',true],
+  ['Massa óssea','kg','Peso do tecido ósseo',true],
+  ['Massa muscular esquelética','kg','Peso do músculo esquelético',true],
+  ['IMC','','IMC, peso / altura',false],
+  ['Peso de gordura','kg','Peso total de tecido adiposo',false],
+  ['Relação cintura-quadril','','Relação entre a circunferência da cintura',false],
+  ['Taxa metabólica basal','kcal','',true]
+];
+function lerBioPratique(paginas){
+  const linhas=paginas.flat(); const todo=linhas.join('\n'); const plano=todo.replace(/\s+/g,' ');
+  if(!/Composi[çc][ãa]o Corporal/i.test(plano.replace(/(\S) (?=\S )/g,'$1')) && !/A n á l i s e d a C o m p o s i ç ã o/.test(plano)) return null;
+  if(!/Padr[ãa]o:\s*[\d.]+/.test(plano) || !/Porcentagem muscular/i.test(plano)) return null;
+  const r={tipo:'bioimpedancia',data:'',laboratorio:'Pratique',itens:[],observacao:''};
+  let m;
+  if((m=plano.match(/Data e Hora\s*[:：]\s*(\d{2})\/(\d{2})\/(\d{4})/))) r.data=m[3]+'-'+m[2]+'-'+m[1];
+  const altura=(m=plano.match(/Altura\s*[:：]\s*(\d{2,3})\s*cm/))?+m[1]:0;
+  const idade=(m=plano.match(/Idade\s*[:：]\s*(\d{1,3})/))?+m[1]:0;
+  // histórico: "10/10/2026   106.8   21.2"
+  const hist=[]; const reH=/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2,3}\.\d)\s+(\d{1,2}\.\d)/g;
+  while((m=reH.exec(todo))) hist.push({data:m[3]+'-'+m[2]+'-'+m[1],peso:+m[4],gord:+m[5]});
+  const atual=hist.find(h=>h.data===r.data)||hist[0];
+  const anteriores=(k)=>hist.filter(h=>h!==atual).slice(0,4).map(h=>({data:h.data,valor:virgula(h[k])}));
+  // faixas "Padrão:64.8kg~76.1kg"
+  const padrao=(trecho)=>{ if(!trecho) return ''; const i=plano.indexOf(trecho); if(i<0) return ''; const mm=plano.slice(i,i+260).match(/Padr[ãa]o:\s*([\d.]+)\s*(kg|%)?\s*~\s*([\d.]+)\s*(kg|%)?/); return mm?virgula(mm[1])+' a '+virgula(mm[3])+(mm[4]||mm[2]?' '+(mm[4]||mm[2]):''):''; };
+  const peso=atual?atual.peso:NaN, gord=atual?atual.gord:NaN;
+  const pesoGord=peso*gord/100;
+  let rcq=(m=plano.match(/Rela[çc][ãa]o Cintura-Quadril\s+(\d\.\d{1,2})\b/))?+m[1]:NaN;
+  const calculado={'Peso':peso,'Gordura corporal':gord,'Peso de gordura':+pesoGord.toFixed(1),'Peso magro':+(peso-pesoGord).toFixed(1),'IMC':altura?+(peso/Math.pow(altura/100,2)).toFixed(1):NaN,'Relação cintura-quadril':rcq};
+  const faltando=[];
+  for(const [nome,un,trecho,img] of BIO_CAMPOS){
+    const v=calculado[nome]; const it={nome:nome+(un==='%'?' (%)':''),valor:(v!=null&&!isNaN(v))?virgula(v):'',unidade:un==='%'?'%':un,referencia:padrao(trecho),situacao:'sem_referencia'};
+    if(nome==='Peso') it.anteriores=anteriores('peso');
+    if(nome==='Gordura corporal') it.anteriores=anteriores('gord');
+    if(!it.valor) faltando.push(it.nome);
+    r.itens.push(it);
+  }
+  // placar do topo: "58   44   Sobrepeso" + "Leve"
+  const ix=linhas.findIndex(l=>/^\s*\d{1,3}\s{2,}\d{1,3}\s{2,}[A-Za-zÀ-ú]/.test(l));
+  if(ix>=0){
+    const p=linhas[ix].trim().split(/\s{2,}/); let classe=p.slice(2).join(' ');
+    if(linhas[ix+1] && /^[A-Za-zÀ-ú]+$/.test(linhas[ix+1].trim())) classe+=' '+linhas[ix+1].trim();
+    r.itens.push({nome:'Pontuação de saúde',valor:p[0],unidade:'de 100',referencia:'',situacao:'sem_referencia'});
+    r.itens.push({nome:'Idade corporal',valor:p[1],unidade:'anos',referencia:idade?'idade real: '+idade+' anos':'',situacao:idade?(+p[1]>idade?'alto':'normal'):'sem_referencia'});
+    if(classe) r.itens.push({nome:'Classificação corporal',valor:classe,unidade:'',referencia:'',situacao:/normal/i.test(classe)?'normal':'alto'});
+  }
+  // peso ideal e ajustes sugeridos: "Peso   102.4   -4.4   -6.6" ... "+2.2"
+  if((m=plano.match(/Peso\s+(\d{2,3}\.\d)\s+([-+]\d+\.\d)\s+([-+]\d+\.\d)/))){
+    r.itens.push({nome:'Peso ideal',valor:virgula(m[1]),unidade:'kg',referencia:'',situacao:'sem_referencia'});
+    r.itens.push({nome:'Ajuste sugerido de peso',valor:virgula(m[2]),unidade:'kg',referencia:'',situacao:'sem_referencia'});
+    r.itens.push({nome:'Ajuste sugerido de gordura',valor:virgula(m[3]),unidade:'kg',referencia:'',situacao:'sem_referencia'});
+    const mm=plano.match(/Padr[ãa]o:\s*[\d.]+kg~[\d.]+kg\s+kg\s+([-+]\d+\.\d)/); if(mm) r.itens.push({nome:'Ajuste sugerido de massa muscular',valor:virgula(mm[1]),unidade:'kg',referencia:'',situacao:'sem_referencia'});
+  }
+  if((m=plano.match(/Ingest[ãa]o Di[áa]ria de Calorias\s*[:：]\s*(\d+)\s*kcal/))) r.itens.push({nome:'Ingestão diária de calorias sugerida',valor:m[1],unidade:'kcal',referencia:'',situacao:'sem_referencia'});
+  if((m=plano.match(/Aer[óo]bicos\s*[:：]\s*(\d+)\s*kcal/))) r.itens.push({nome:'Gasto sugerido com aeróbicos',valor:m[1],unidade:'kcal',referencia:'',situacao:'sem_referencia'});
+  // análise segmentar: ordem no relatório = braço esq., braço dir., perna esq., perna dir.
+  const lados=['braço esquerdo','braço direito','perna esquerda','perna direita'];
+  const seg=(rot)=>{ const out=[]; const re=new RegExp(rot+':\\s*([\\d.]+)\\s*kg\\s+([\\d.]+)%','g'); let x; while((x=re.exec(plano))) out.push([x[1],x[2]]); return out; };
+  const mus=seg('Muscul'), gor=seg('Gordura');
+  mus.slice(0,4).forEach((v,k)=>r.itens.push({nome:'Músculo '+lados[k],valor:virgula(v[0]),unidade:'kg',referencia:virgula(v[1])+'% do padrão',situacao:'sem_referencia'}));
+  gor.slice(0,4).forEach((v,k)=>r.itens.push({nome:'Gordura '+lados[k],valor:virgula(v[0]),unidade:'kg',referencia:virgula(v[1])+'% do padrão',situacao:'sem_referencia'}));
+  if((m=plano.match(/Gordura do Tronco:\s*M[úu]sculos do Tronco:[\s\S]{0,140}?([\d.]+)\s*kg\s+([\d.]+)%\s*[↑↓]?\s*([\d.]+)\s*kg\s+([\d.]+)%/))){
+    r.itens.push({nome:'Gordura do tronco',valor:virgula(m[1]),unidade:'kg',referencia:virgula(m[2])+'% do padrão',situacao:'sem_referencia'});
+    r.itens.push({nome:'Músculo do tronco',valor:virgula(m[3]),unidade:'kg',referencia:virgula(m[4])+'% do padrão',situacao:'sem_referencia'});
+  }
+  // medidas
+  for(const [rot,nome] of [['Circunferência do Braço','Circunferência do braço'],['Circunferência da Cintura','Circunferência da cintura'],['Circunferência dos Quadris','Circunferência do quadril'],['Dimensão da Coxa','Circunferência da coxa'],['Largura dos Ombros','Largura dos ombros']]){
+    const mm=plano.match(new RegExp(rot+'\\s+([\\d.]+)\\s*cm')); if(mm) r.itens.push({nome,valor:virgula(mm[1]),unidade:'cm',referencia:'',situacao:'sem_referencia'});
+  }
+  // postura: "Risco de ...：NÍVEL", nível e medida podem vir quebrados em linhas
+  r.itens.push(...lerPostura(linhas));
+  r.itens.forEach(i=>{ if(i.situacao==='sem_referencia'&&i.valor&&/\d\s*a\s*\d/.test(i.referencia)){ const c=classificarBio(i); if(c) i.situacao=c; } });
+  return {resposta:r,faltando};
+}
+
+// nesses itens, ficar abaixo da faixa é bom
+const MENOR_MELHOR=/^(Relação cintura-quadril|Gordura visceral)/;
+function classificarBio(i){ const c=classificar(i,{}); return (c==='baixo'&&MENOR_MELHOR.test(i.nome))?'normal':c; }
+
+function lerPostura(linhas){
+  const cel=[]; for(const l of linhas) for(const c of l.split(/\s{3,}/)) if(c.trim()) cel.push(c.trim());
+  const NIVEL=/^(?:(?:MUITO|Muito)\s+)?(?:ALTO|Alto|Baixo|BAIXO|M[ée]dio|MÉDIO|Moderado)$|^(?:MUITO|Muito)$/;
+  const out=[];
+  for(let k=0;k<cel.length;k++){
+    if(!/^Risco de\b/.test(cel[k])) continue;
+    let nome=cel[k].replace(/^Risco de\s*/,''), nivel='', medidas=[], fechou=false;
+    // medidas que aparecem logo antes (ex.: "Perna esquerda", "5.4°")
+    for(let j=Math.max(0,k-2);j<k;j++){ const mm=cel[j].match(/^(?:Perna (?:esquerda|direita)\s*)?([\d.]+)\s*(°|cm)$/); if(mm) medidas.push(virgula(mm[1])+(mm[2]==="cm"?" cm":mm[2])); }
+    for(let j=k+1;j<Math.min(cel.length,k+14)&&!(fechou&&nivel&&!/^MUITO$/.test(nivel));j++){
+      const c=cel[j];
+      if(/^Risco de\b/.test(c)) break;
+      const mm=c.match(/^(?:Perna (?:esquerda|direita)\s*)?([\d.]+)\s*(°|cm)$/); if(mm){ medidas.push(virgula(mm[1])+(mm[2]==="cm"?" cm":mm[2])); continue; }
+      const mc=c.match(/^([^：:]{0,30})[：:]\s*(.*)$/);
+      if(!fechou && mc && c.length<40){ nome+=' '+mc[1]; nivel=mc[2]; fechou=true; continue; }
+      if(!fechou && c.length<=22 && !/\d/.test(c) && /^[A-Za-zÀ-ú\/ ]+$/.test(c) && /^[a-zà-ú]/.test(c)){ nome+=' '+c; continue; }
+      if(fechou && NIVEL.test(c)){ nivel=(nivel?nivel+' ':'')+c; }
+    }
+    nivel=limpa(nivel); if(!nivel) continue;
+    const alto=/alto/i.test(nivel);
+    out.push({nome:'Postura: '+limpa(nome).replace(/\s+/g,' '),valor:medidas.slice(0,2).join(' / ')||'—',unidade:'',referencia:'Risco '+nivel.toLowerCase(),situacao:alto?'alto':'normal'});
+  }
+  return out;
+}
+
+// pede à IA só os números das barras (vêm como imagem na página 1)
+function promptBarrasPratique(faltando){
+  return `A imagem é a página 1 de um relatório de bioimpedância. Na coluna "Análise da Composição Corporal" e no quadro "Análise do Grau de Obesidade", cada item tem uma barra com o valor escrito no fim dela (ex.: "46.0%", "7.0", "2197.3kcal").
+Leia SOMENTE estes valores: ${faltando.join(', ')}.
+Mapeamento dos rótulos: "Massa muscular (%)" = Músculo; "Água corporal (%)" = ÁGUA; "Gordura visceral" = VIS-Gordura; "Gordura subcutânea (%)" = SUB-Gordura; "Proteína (%)" = Proteína; "Massa óssea" = OSSO; "Massa muscular esquelética" = Peso Muscular; "Taxa metabólica basal" = TMB.
+Responda SOMENTE com JSON, número com ponto decimal e sem unidade, por exemplo {"Massa muscular (%)": 46.0, "Taxa metabólica basal": 2197.3}. Se não conseguir ler um valor, deixe-o de fora.`;
+}
+function aplicarBarras(resposta,lidos){
+  const ok=[];
+  for(const it of resposta.itens){
+    if(it.valor || !(it.nome in (lidos||{}))) continue;
+    const v=+String(lidos[it.nome]).replace(',','.'); if(!isFinite(v)) continue;
+    const f=faixaDe(it.referencia); if(f&&isFinite(f.min)&&isFinite(f.max)&&(v<f.min*0.3||v>f.max*3)) continue; // valor absurdo: descarta
+    it.valor=virgula(v); const c=classificarBio(it); if(c) it.situacao=c; ok.push(it.nome);
+  }
+  return ok;
+}
+
 const MAX_PAGINAS = 40;   // páginas lidas como imagem (laudo escaneado ou foto)
 const LOTE = 4;           // páginas enviadas à IA por chamada, no modo imagem
 const LOTE_TEXTO = 6;     // páginas de texto por chamada, para laudos de outros laboratórios
@@ -768,6 +901,17 @@ async function lerExame(files, texto, tipoInf, dataInf){
       status('Lendo o texto do PDF…');
       let paginas=[]; try{ paginas=await textoDoPdf(pdf,80); }catch(e){ paginas=[]; }
       if(paginas.length && temTexto(paginas)){
+        // 0) bioimpedância Pratique: texto direto; os números das barras (imagem) a IA lê só na página 1
+        const bio=lerBioPratique(paginas);
+        if(bio){
+          if(bio.faltando.length && iaPronta()){
+            status('Lendo os números das barras do relatório…');
+            try{ const img=await renderPagina({pdf,n:1}); const lidos=await ia.json(promptBarrasPratique(bio.faltando),{images:[img],onStatus:status}); const ok=aplicarBarras(bio.resposta,lidos); bio.faltando=bio.faltando.filter(n=>!ok.includes(n)); }
+            catch(e){ /* sem IA: a pessoa preenche na revisão */ }
+          }
+          if(bio.faltando.length) avisos.push(bio.faltando.length+' valor'+(bio.faltando.length>1?'es estão':' está')+' só como imagem no relatório ('+bio.faltando.join(', ')+'). Preencha os campos em branco olhando as barras da página 1; os que ficarem vazios não são salvos.');
+          respostas.push(bio.resposta); continue;
+        }
         // 1) formato conhecido: lê sem IA
         const proprio=lerLaudoTexto(paginas);
         if(proprio&&proprio.itens.length>=3){
@@ -1266,7 +1410,13 @@ async function salvarRascunho(substituirId){
   const base=substituirId?S.exames.filter(e=>e.id!==substituirId):S.exames;
   S.exames=[r].concat(base).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
   await save('exames',S.exames); S.rascunho=null; S.dup=null; S.sub=null; S.tab='exames';
-  toast(substituirId?'Exame substituído.':'Exame salvo.'); render(); window.scrollTo(0,0);
+  let extra='';
+  if(r.tipo==='bioimpedancia'&&S.perfil){
+    const ip=r.itens.find(i=>/^Peso$/i.test(i.nome)); const v=ip?numBR(ip.valor):NaN;
+    const maisNova=!S.exames.some(e=>e!==r&&e.tipo==='bioimpedancia'&&String(e.data)>String(r.data));
+    if(isFinite(v)&&maisNova&&String(S.perfil.peso)!==String(v)){ S.perfil.peso=String(v); await save('perfil',S.perfil); extra=' Peso do perfil atualizado para '+virgula(v)+' kg.'; }
+  }
+  toast((substituirId?'Exame substituído.':'Exame salvo.')+extra); render(); window.scrollTo(0,0);
 }
 
 function syncRev(){document.querySelectorAll('.rv').forEach(i=>{const r=S.rascunho.itens[+i.dataset.ix];if(r)r.valor=i.value;});const tp=document.getElementById('rTipo'),dt=document.getElementById('rData');if(tp)S.rascunho.tipo=tp.value;if(dt)S.rascunho.data=dt.value;}
