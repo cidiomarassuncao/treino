@@ -1,0 +1,71 @@
+# Gera o APK do app Android (com leitura do Conexão Saúde) e publica em "Releases".
+name: Gerar APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/gerar-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir a senha da chave do app
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Falta o segredo KEYSTORE_PASSWORD. Crie em Settings › Secrets and variables › Actions › New repository secret."
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Apontar o app para o site do GitHub Pages
+        run: |
+          DONO=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO="${{ github.event.repository.name }}"
+          if [ "$REPO" = "$DONO.github.io" ]; then URL="https://$DONO.github.io/"; else URL="https://$DONO.github.io/$REPO/"; fi
+          node -e "const f='capacitor.config.json';const c=require('./'+f);c.server.url=process.argv[1];require('fs').writeFileSync(f,JSON.stringify(c,null,2));" "$URL"
+          echo "Endereço do app: $URL"
+          npx cap sync android
+
+      - name: Gerar APK assinado
+        working-directory: android-app/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../treino-nutricao.apk
+
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: App Android ${{ github.run_number }}
+          body: Baixe o arquivo treino-nutricao.apk abaixo, pelo celular, e instale.
+          files: android-app/treino-nutricao.apk
+          make_latest: true
