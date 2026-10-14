@@ -260,7 +260,19 @@ const PROV = {
 // modelos alternativos, tentados em ordem quando o principal está sobrecarregado ou indisponível
 const RESERVA = { gemini:['gemini-3.6-flash','gemini-3.5-flash-lite'], claude:['claude-haiku-5-5'], openai:['gpt-6-luna'] };
 const espera = (ms,signal)=>new Promise((ok,err)=>{const t=setTimeout(ok,ms); if(signal) signal.addEventListener('abort',()=>{clearTimeout(t);err({code:'cancelled'});},{once:true});});
-const iaPronta = ()=>!!(S.cfg&&S.cfg.provedor&&S.cfg.chave);
+const TAREFAS={exames:'Ler exames',plano:'Montar treino e dieta',chat:'Conversa no chat'};
+// formato: {provedor (aba aberta na tela), chaves:{gemini,claude,openai}, modelos:{...}, tarefas:{exames,plano,chat}, reserva:true}
+function normCfg(c){
+  c=c||{}; if(!c.chaves){ c.chaves={}; c.modelos={}; if(c.chave){ c.chaves[c.provedor||'gemini']=c.chave; c.modelos[c.provedor||'gemini']=c.modelo||''; } }
+  c.modelos=c.modelos||{}; c.tarefas=c.tarefas||{}; if(c.reserva===undefined) c.reserva=true;
+  c.provedor=PROV[c.provedor]?c.provedor:(Object.keys(PROV).find(k=>c.chaves[k])||'gemini');
+  c.chave=c.chaves[c.provedor]||''; c.modelo=c.modelos[c.provedor]||''; return c;
+}
+const comChave=()=>Object.keys(PROV).filter(k=>S.cfg&&S.cfg.chaves&&S.cfg.chaves[k]);
+const iaPronta = ()=>comChave().length>0;
+// IA da tarefa: a escolhida (se tiver chave) ou a primeira com chave
+function iaDaTarefa(t){ const c=S.cfg, ks=comChave(); const e=c&&c.tarefas&&c.tarefas[t]; return ks.includes(e)?e:(ks.includes(c.provedor)?c.provedor:ks[0]); }
+function ordemProvedores(tarefa){ const p=iaDaTarefa(tarefa); return S.cfg.reserva===false?[p]:[p].concat(comChave().filter(k=>k!==p)); }
 
 function blobParaB64(blob){return new Promise((ok,err)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>err({code:'image_rejected'});r.readAsDataURL(blob);});}
 async function prepararImagem(blob){
@@ -290,18 +302,39 @@ async function chamarIA(turns, opts){
   opts=opts||{};
   if(!iaPronta()) throw {code:'sem_chave'};
   if(!navigator.onLine) throw {code:'offline'};
-  const provedor=S.cfg.provedor; const escolhido=(S.cfg.modelo||'').trim();
+  const provs=opts.so?[opts.so]:ordemProvedores(opts.tarefa||'exames');
+  const imgs=[]; for(const b of (opts.images||[])) imgs.push(await prepararImagem(b));
+  let ultimoErro=null;
+  for(let i=0;i<provs.length;i++){
+    try{
+      const txt=await chamarProvedor(provs[i], turns, imgs, opts);
+      if(i>0) avisarTroca(provs[0],provs[i]);
+      return txt;
+    }catch(e){
+      ultimoErro=e; const c=e&&e.code;
+      // erros do pedido (não da IA) não adianta repetir em outra
+      if(['cancelled','offline','image_rejected','prompt_too_large','refused'].includes(c)) throw e;
+      if(i<provs.length-1&&opts.onStatus) opts.onStatus(PROV[provs[i]].nome.split(' ').pop()+' não respondeu. Usando '+PROV[provs[i+1]].nome.split(' ').pop()+'…');
+    }
+  }
+  throw ultimoErro||{code:'upstream_error'};
+}
+let avisouTroca={};
+function avisarTroca(de,para){ const k=de+'>'+para; if(avisouTroca[k]) return; avisouTroca[k]=true;
+  setTimeout(()=>toast(PROV[de].nome.split(' ').pop()+' indisponível ou sem limite agora. Usei o '+PROV[para].nome.split(' ').pop()+'.'),400); }
+async function chamarProvedor(provedor, turns, imgs, opts){
+  const chave=S.cfg.chaves[provedor]; const escolhido=(S.cfg.modelos[provedor]||'').trim();
   // ordem: modelo escolhido (ou o padrão) e depois os mais leves do mesmo provedor
   const lista=[escolhido||PROV[provedor].modelo].concat((RESERVA[provedor]||[]).filter(x=>x!==escolhido));
   const fora=esgotados();
-  let modelos=lista.filter(x=>!fora[x]); if(!modelos.length) modelos=lista.slice(-1);   // todos esgotados: tenta o mais leve mesmo assim
-  const imgs=[]; for(const b of (opts.images||[])) imgs.push(await prepararImagem(b));
+  let modelos=lista.filter(x=>!fora[x]);
+  if(!modelos.length){ if(!opts.so&&S.cfg.reserva!==false&&comChave().length>1) throw {code:'rate_limited'}; modelos=lista.slice(-1); }   // todos esgotados: passa para outra IA, ou tenta o mais leve
   let ultimoErro=null;
   for(let m=0;m<modelos.length;m++){
     for(let tentativa=0;tentativa<2;tentativa++){
       try{
-        const txt=await chamarModelo(modelos[m], turns, imgs, opts);
-        if(modelos[m]!==lista[0]) avisarModeloLeve(modelos[m]);
+        const txt=await chamarModelo(provedor, chave, modelos[m], turns, imgs, opts);
+        if(modelos[m]!==lista[0]) avisarModeloLeve(provedor, modelos[m]);
         return txt;
       }catch(e){
         ultimoErro=e; const c=e&&e.code;
@@ -318,15 +351,14 @@ async function chamarIA(turns, opts){
   throw ultimoErro||{code:'upstream_error'};
 }
 let avisouLeve=false;
-function avisarModeloLeve(modelo){
+function avisarModeloLeve(provedor,modelo){
   if(avisouLeve) return; avisouLeve=true;
-  const ate=(rawGet('esgotado')||{})[S.cfg.modelo||PROV[S.cfg.provedor].modelo];
+  const ate=(rawGet('esgotado')||{})[(S.cfg.modelos[provedor]||'').trim()||PROV[provedor].modelo];
   const quando=ate&&ate-Date.now()>3600e3?' até a cota renovar, por volta das '+new Date(ate).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+(new Date(ate).getDate()!==new Date().getDate()?' de amanhã':''):' por enquanto';
   setTimeout(()=>toast('Limite do modelo principal atingido. Usando '+modelo+quando+'.'),400);
 }
 
-async function chamarModelo(modelo, turns, imgs, opts){
-  const {provedor,chave}=S.cfg;
+async function chamarModelo(provedor, chave, modelo, turns, imgs, opts){
   const last=turns.length-1;
   let url, headers, body;
   if(provedor==='gemini'){
@@ -622,7 +654,7 @@ Monte o plano desta pessoa. Responda SOMENTE com um objeto JSON neste formato:
 "medico":["o que levar para conversar com o médico, se houver"]}
 Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, cada um com 1 a 2 alternativas que trabalham o mesmo músculo (para aparelho ocupado ou desconforto), duração próxima de ${h(S.perfil.minutos||60)} minutos. 4 a 6 refeições, cada uma com 2 a 3 trocas equivalentes em calorias e proteína. Se não houver exames, baseie-se no perfil e diga no resumo que exames deixariam o plano mais preciso.`;
   try{
-    const plano = await ia.json(prompt,{onStatus:(t)=>{S.busy={tipo:'plano',txt:t};render();}});
+    const plano = await ia.json(prompt,{tarefa:'plano',onStatus:(t)=>{S.busy={tipo:'plano',txt:t};render();}});
     if(!plano||!plano.treino||!Array.isArray(plano.treino.dias)||!plano.dieta) throw {code:'invalid_json'};
     plano.criado=hoje();
     S.plano=plano; S.dia=null; S.feitos={};
@@ -1174,7 +1206,7 @@ Mantenha igual tudo o que não foi pedido. Nas refeições, o campo "trocas" é 
   const alvo=S.chat[S.chat.length-1];
   chatCtl=new AbortController();
   try{
-    const r=await ia.json(turns,{signal:chatCtl.signal});
+    const r=await ia.json(turns,{tarefa:'chat',signal:chatCtl.signal});
     alvo.content=String((r&&r.resposta)||'').trim()||'Pronto.';
     const prop=validarAlteracao(r&&r.alterar);
     if(prop) alvo.proposta=prop;
@@ -1261,7 +1293,7 @@ function telaPerfil(){
     <button class="btn block" type="submit">${novo?'Continuar':'Salvar perfil'}</button>
     ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
   </form>
-  ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?'Usando '+h(PROV[S.cfg.provedor].nome)+' · modelo '+h(S.cfg.modelo||PROV[S.cfg.provedor].modelo):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
+  ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?Object.entries(TAREFAS).map(([t,n])=>h(n)+': '+h(PROV[iaDaTarefa(t)].nome.split(' ').pop())).join(' · ')+(comChave().length>1&&S.cfg.reserva!==false?'. Uma cobre a outra se falhar.':''):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
   <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">O app pede a senha ao abrir e depois de 5 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
   <div class="grid2"><button class="btn ghost" data-act="trocarSenha">Trocar senha</button><button class="btn ghost" data-act="bloquear">Bloquear agora</button></div>
   <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button></div>
@@ -1270,19 +1302,27 @@ function telaPerfil(){
 }
 
 function telaConfig(){
-  const c=S.cfg||{provedor:'gemini',chave:'',modelo:''}; const pv=PROV[c.provedor]||PROV.gemini;
-  const primeiro=!iaPronta();
-  return `${primeiro&&!S.editCfg?`<div class="stack-s" style="padding-top:12px"><span class="eyebrow">Último passo</span><h1>Escolha a IA</h1><p class="muted">O app usa a IA que você escolher, com a sua chave. A chave fica guardada só neste celular.</p></div>`:header('Configurar IA',true)}
+  const c=normCfg(S.cfg); S.cfg=c; const pv=PROV[c.provedor];
+  const primeiro=!iaPronta(); const ks=comChave(); const curto=(k)=>PROV[k].nome.split(' ').pop();
+  const divisao=ks.length>1?`<div class="card stack">
+      <h3>Qual IA faz cada tarefa</h3>
+      ${Object.entries(TAREFAS).map(([t,nome])=>`<label class="f">${h(nome)}<select id="t_${t}">${ks.map(k=>`<option value="${k}"${iaDaTarefa(t)===k?' selected':''}>${h(PROV[k].nome)}</option>`).join('')}</select></label>`).join('')}
+      <label class="row" style="gap:10px;align-items:flex-start;min-height:44px;cursor:pointer"><input id="cReserva" type="checkbox" style="width:22px;height:22px;margin-top:2px;accent-color:var(--accent)"${c.reserva!==false?' checked':''}><span class="small">Se a IA escolhida falhar, ficar sobrecarregada ou acabar o limite, usar a outra automaticamente.</span></label>
+      <p class="note">Sugestão: Gemini para ler exames (tem faixa gratuita e lê bem fotos e PDFs) e Claude para o plano e o chat.</p>
+    </div>`:(ks.length===1&&!S.editCfg?'':(ks.length===1?`<p class="note">Para dividir tarefas e ter uma IA de reserva, toque em outro provedor acima e cole a chave dele também.</p>`:''));
+  return `${primeiro&&!S.editCfg?`<div class="stack-s" style="padding-top:12px"><span class="eyebrow">Último passo</span><h1>Escolha a IA</h1><p class="muted">O app usa a IA que você escolher, com a sua chave. A chave fica guardada só neste celular. Dá para cadastrar mais de uma.</p></div>`:header('Configurar IA',true)}
   ${statusBox()}
   <form id="fCfg" class="stack" novalidate>
     <fieldset class="stack-s" style="border:0;padding:0;margin:0"><legend class="small muted" style="font-weight:600;margin-bottom:6px">Provedor</legend>
-      <div class="chips">${Object.entries(PROV).map(([k,v])=>`<button type="button" class="chip" aria-pressed="${c.provedor===k}" data-act="prov" data-p="${k}">${h(v.nome)}</button>`).join('')}</div></fieldset>
+      <div class="chips">${Object.entries(PROV).map(([k,v])=>`<button type="button" class="chip" aria-pressed="${c.provedor===k}" data-act="prov" data-p="${k}">${h(v.nome)}${c.chaves[k]?' ✓':''}</button>`).join('')}</div>
+      ${ks.length?`<p class="small muted">Com chave: ${h(ks.map(curto).join(', '))}.</p>`:''}</fieldset>
     <div class="card stack-s"><p class="small">${h(pv.dica)}</p><a class="small" href="${pv.chave}" target="_blank" rel="noopener" style="font-weight:700">Abrir página de chaves</a></div>
-    <label class="f">Chave de API<input id="cChave" type="password" autocomplete="off" spellcheck="false" value="${h(c.chave)}" placeholder="Cole a chave aqui"></label>
+    <label class="f">Chave de API do ${h(curto(c.provedor))}<input id="cChave" type="password" autocomplete="off" spellcheck="false" value="${h(c.chave)}" placeholder="Cole a chave aqui"></label>
     <label class="f">Modelo (opcional)<input id="cModelo" autocomplete="off" spellcheck="false" value="${h(c.modelo)}" placeholder="${h(pv.modelo)}"></label>
     <p class="note">Deixe o modelo em branco para usar o padrão. Só troque se o provedor lançar um modelo novo ou desativar o atual.</p>
-    <div class="grid2"><button type="button" class="btn ghost" data-act="testar"${S.busy?' disabled':''}>Testar</button><button class="btn" type="submit">Salvar</button></div>
-    ${iaPronta()?'<button type="button" class="btn plain block" data-act="rmChave">Apagar chave deste celular</button>':''}
+    ${divisao}
+    <div class="grid2"><button type="button" class="btn ghost" data-act="testar"${S.busy?' disabled':''}>Testar ${h(curto(c.provedor))}</button><button class="btn" type="submit">Salvar</button></div>
+    ${c.chaves[c.provedor]?`<button type="button" class="btn plain block" data-act="rmChave">Apagar chave do ${h(curto(c.provedor))} deste celular</button>`:''}
     ${primeiro&&!S.editCfg?'<button type="button" class="btn plain block" data-act="pularCfg">Configurar depois</button>':''}
   </form>`;
 }
@@ -1603,12 +1643,12 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='fecharErro'){S.erro=null;render();}
   else if(a==='sugestao'){perguntar(t.textContent.trim());}
   else if(a==='parar'){if(chatCtl)chatCtl.abort();}
-  else if(a==='config'){S.editPerfil=false;S.editCfg=true;S.erro=null;S.cfg=S.cfg||{provedor:'gemini',chave:'',modelo:''};render();window.scrollTo(0,0);}
-  else if(a==='prov'){lerCfgForm();S.cfg.provedor=t.dataset.p;S.cfg.modelo='';render();}
+  else if(a==='config'){S.editPerfil=false;S.editCfg=true;S.erro=null;S.cfg=normCfg(S.cfg);render();window.scrollTo(0,0);}
+  else if(a==='prov'){lerCfgForm();S.cfg.provedor=t.dataset.p;normCfg(S.cfg);S.erro=null;render();}
   else if(a==='testar'){
     lerCfgForm(); if(!S.cfg.chave){toast('Cole a chave primeiro.');return;}
     S.busy={txt:'Testando a conexão…'};S.erro=null;render();
-    try{await ia.chat([{role:'user',content:'Responda apenas: ok'}],{onStatus:(t)=>{S.busy={txt:t};render();}});S.busy=null;render();toast('Conexão funcionando.');}
+    try{await ia.chat([{role:'user',content:'Responda apenas: ok'}],{so:S.cfg.provedor,onStatus:(t)=>{S.busy={txt:t};render();}});S.busy=null;render();toast('Conexão funcionando.');}
     catch(e){S.busy=null;S.erro=erroIA(e);render();}
   }
   else if(a==='sincSaude'){ sincronizarSaude(true); }
@@ -1655,7 +1695,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
   else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
-  else if(a==='rmChave'){S.cfg={provedor:S.cfg.provedor,chave:'',modelo:''};lsSet('cfg',S.cfg);toast('Chave apagada.');render();}
+  else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
   else if(a==='exportar'){
     const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,exames:S.exames,plano:S.plano,registro:S.registro};
     if(NATIVO){ try{ await navigator.clipboard.writeText(JSON.stringify(dados)); toast('Cópia copiada. Cole num e-mail ou no WhatsApp para você mesmo e guarde.'); }catch(e){ toast('Não consegui copiar. Faça a cópia pelo app no Chrome.'); } return; }
@@ -1690,7 +1730,14 @@ async function salvarRascunho(substituirId){
 
 function syncRev(){document.querySelectorAll('.rv').forEach(i=>{const r=S.rascunho.itens[+i.dataset.ix];if(r)r.valor=i.value;});const tp=document.getElementById('rTipo'),dt=document.getElementById('rData');if(tp)S.rascunho.tipo=tp.value;if(dt)S.rascunho.data=dt.value;}
 
-function lerCfgForm(){const k=document.getElementById('cChave'),m=document.getElementById('cModelo');S.cfg=S.cfg||{provedor:'gemini'};if(k)S.cfg.chave=k.value.trim();if(m)S.cfg.modelo=m.value.trim();}
+function lerCfgForm(){
+  const c=S.cfg=normCfg(S.cfg); const k=document.getElementById('cChave'),m=document.getElementById('cModelo');
+  if(k){ const v=k.value.trim(); if(v) c.chaves[c.provedor]=v; else delete c.chaves[c.provedor]; }
+  if(m) c.modelos[c.provedor]=m.value.trim();
+  for(const t in TAREFAS){ const el=document.getElementById('t_'+t); if(el) c.tarefas[t]=el.value; }
+  const r=document.getElementById('cReserva'); if(r) c.reserva=r.checked;
+  normCfg(c);
+}
 
 document.addEventListener('submit', async (ev)=>{
   ev.preventDefault(); const f=ev.target;
@@ -1738,7 +1785,7 @@ document.addEventListener('submit', async (ev)=>{
     S.busy=null; S.sub=null; S.editPerfil=true; toast('Senha trocada.'); render(); window.scrollTo(0,0); return;
   }
   if(f.id==='fCfg'){
-    lerCfgForm(); if(!S.cfg.chave){document.getElementById('cChave').focus();toast('Cole a chave de API.');return;}
+    lerCfgForm(); if(!iaPronta()){document.getElementById('cChave').focus();toast('Cole a chave de API.');return;}
     lsSet('cfg',S.cfg); const primeiro=!S.cfgVisto; S.cfgVisto=true; lsSet('cfgVisto',true); S.editCfg=false; S.erro=null;
     toast(primeiro?'Tudo pronto. Agora é só adicionar exames ou gerar o plano.':'Configuração salva.'); S.tab='inicio'; S.sub=null; render(); window.scrollTo(0,0); return;
   }
@@ -1798,7 +1845,7 @@ function bloquear(){
 async function carregarDados(){
   const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
   S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
-  S.feitos=lsGet('feitos')||{}; S.cfg=lsGet('cfg'); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
+  S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
   if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
   S.saude=lsGet('saude');
   S.ready=true; render(); window.scrollTo(0,0);
