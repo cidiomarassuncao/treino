@@ -432,52 +432,94 @@ function noitesDeSono(amostras){
   return noites;
 }
 
+const LIMITE_SAUDE=/rate.?limit|quota/i;
 async function sincronizarSaude(manual){
   const H=plugSaude();
   if(!H){ if(manual) toast(window.Capacitor?'O app não encontrou o módulo do Conexão Saúde. Instale a versão mais recente do APK.':'A leitura do relógio só funciona no app Android.'); return; }
-  if(S.saudeBusy) return; S.saudeBusy=true; if(manual) render();
-  const tentar=async(f)=>{ try{ return await f(); }catch(e){ return null; } };
+  if(S.saudeBusy) return;
+  const ant=S.saude||{};
+  const pausa=ant.pausaAte?new Date(ant.pausaAte).getTime()-Date.now():0;
+  if(pausa>0){ if(manual) toast('O Conexão Saúde pediu uma pausa nas leituras. Tente de novo em '+Math.ceil(pausa/60000)+' min.'); return; }
+  S.saudeBusy=true; if(manual) render();
   try{
     const disp=await H.isAvailable();
     if(!disp||!disp.available) throw {msg:'O Conexão Saúde não está disponível neste celular. Atualize o app "Conexão Saúde" na Play Store e tente de novo.'};
     const aut=await H.requestAuthorization({read:TIPOS_SAUDE});
     const ok=new Set((aut&&aut.readAuthorized)||[]);
     if(!ok.size) throw {msg:'Sem permissão para ler os dados. Toque em Sincronizar e permita o acesso no Conexão Saúde.'};
-    // períodos começando à meia-noite, para os totais por dia caírem no dia certo
-    const fim=new Date(); const ini=new Date(fim); ini.setHours(0,0,0,0); ini.setDate(ini.getDate()-13);
-    const iniSono=new Date(ini); iniSono.setDate(iniSono.getDate()-1);
-    const per={startDate:ini.toISOString(),endDate:fim.toISOString()};
-    const dias={}; const D=(k)=>dias[k]||(dias[k]={});
+    const fim=new Date(); const meiaNoite=(n)=>{ const d=new Date(fim); d.setHours(0,0,0,0); d.setDate(d.getDate()-n); return d; };
+    // 1ª leitura (ou leitura antiga): 14 dias. Depois, só os 2 últimos dias, somados ao que já foi lido.
+    const recente=ant.sincronizado&&(Date.now()-new Date(ant.sincronizado).getTime()<3*864e5)&&ant.dias;
+    const pend=new Set(ant.pendentes||[]);
+    const desde=(t)=>(recente&&!pend.has(t))?meiaNoite(1):meiaNoite(13);
+    const corte=diaLocal(meiaNoite(13));
+    const dias={}; for(const k in (ant.dias||{})) if(k>=corte) dias[k]={...ant.dias[k]};
+    const D=(k)=>dias[k]||(dias[k]={});
+    const limpa=(campos,ini)=>{ const k0=diaLocal(ini); for(const k in dias) if(k>=k0) campos.forEach(c=>delete dias[k][c]); };
+    const vazio={...(ant.vazio||{})}; // tipos que o relógio não grava: consulta só 1 vez por semana
     const diag={permitidos:[...ok],negados:(aut&&aut.readDenied)||[],n:{},erros:{}};
-    const ler=async(rotulo,f)=>{ try{ const r=await f(); const lista=(r&&(r.samples||r.workouts))||[]; diag.n[rotulo]=lista.length; return lista; }catch(e){ diag.erros[rotulo]=String((e&&(e.message||e.code))||e).slice(0,120); return []; } };
-    if(ok.has('steps')){ (await ler('passos',()=>H.queryAggregated({...per,dataType:'steps',bucket:'day',aggregation:'sum'}))).forEach(x=>{ if(isFinite(+x.value)) D(diaLocal(x.startDate)).passos=Math.round(+x.value); }); }
-    if(ok.has('heartRate')){
-      const med=await ler('fcMedia',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'average'}));
-      med.forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMedia=Math.round(+x.value); });
-      (await ler('fcMax',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'max'}))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMax=Math.round(+x.value); });
-      (await ler('fcMin',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'min'}))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMin=Math.round(+x.value); });
-      if(!med.length){ // sem agregado: calcula pelas medições
-        const am=await ler('fcAmostras',()=>H.readSamples({...per,dataType:'heartRate',limit:5000})); const g={};
-        am.forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (g[k]=g[k]||[]).push(+x.value); } });
-        for(const k in g){ const v=g[k]; Object.assign(D(k),{fcMedia:Math.round(v.reduce((a,b)=>a+b,0)/v.length),fcMax:Math.max(...v),fcMin:Math.min(...v)}); }
-      }
-    }
-    if(ok.has('restingHeartRate')){ (await ler('fcRepouso',()=>H.readSamples({...per,dataType:'restingHeartRate',limit:300}))).slice().sort((a,b)=>String(a.startDate).localeCompare(String(b.startDate))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcRepouso=Math.round(+x.value); }); }
-    if(ok.has('heartRateVariability')){ const soma={}; (await ler('hrv',()=>H.readSamples({...per,dataType:'heartRateVariability',limit:500}))).forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (soma[k]=soma[k]||[]).push(+x.value); } }); for(const k in soma){ D(k).hrv=Math.round(soma[k].reduce((a,b)=>a+b,0)/soma[k].length); } }
+    let parou=false; const pendentes=[];
+    const ler=async(rotulo,tipo,f)=>{
+      if(parou){ pendentes.push(tipo); return null; }
+      try{ const r=await f(); const lista=(r&&(r.samples||r.workouts))||[]; diag.n[rotulo]=lista.length; return lista; }
+      catch(e){ const m=String((e&&(e.message||e.code))||e); diag.erros[rotulo]=m.slice(0,90);
+        if(LIMITE_SAUDE.test(m)){ parou=true; diag.limite=true; } pendentes.push(tipo); return null; }
+    };
+    const pular=(t)=>vazio[t]&&(Date.now()-new Date(vazio[t]).getTime()<7*864e5);
+    const per=(t)=>({startDate:desde(t).toISOString(),endDate:fim.toISOString()});
+    // ordem de prioridade: o que mais importa primeiro, caso o Conexão Saúde limite as leituras
     if(ok.has('sleep')){
-      const am=await ler('sono',()=>H.readSamples({startDate:iniSono.toISOString(),endDate:fim.toISOString(),dataType:'sleep',limit:1000}));
-      if(am[0]){ const x=am[0]; diag.amostraSono={campos:Object.keys(x).join(','),estado:x.sleepState||'',etapas:Array.isArray(x.stages)?x.stages.length:0,valor:x.value}; }
-      const noites=noitesDeSono(am); for(const k in noites){ if(noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); }
+      const ini=desde('sleep'); const iniS=new Date(ini); iniS.setDate(iniS.getDate()-1);
+      const am=await ler('sono','sleep',()=>H.readSamples({startDate:iniS.toISOString(),endDate:fim.toISOString(),dataType:'sleep',limit:1000}));
+      if(am){ if(am[0]){ const x=am[0]; diag.amostraSono={campos:Object.keys(x).join(','),estado:x.sleepState||'',etapas:Array.isArray(x.stages)?x.stages.length:0,valor:x.value}; }
+        limpa(['sono','sonoProfundo','sonoRem'],ini);
+        const noites=noitesDeSono(am); for(const k in noites){ if(k>=corte&&noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); } }
     }
-    let peso=null;
-    if(ok.has('weight')){ const am=await ler('peso',()=>H.readSamples({startDate:new Date(fim.getTime()-60*864e5).toISOString(),endDate:fim.toISOString(),dataType:'weight',limit:50})); const ult=am.slice().sort((a,b)=>String(b.startDate).localeCompare(String(a.startDate)))[0]; if(ult&&+ult.value>0) peso={kg:Math.round(+ult.value*10)/10,data:diaLocal(ult.startDate)}; }
-    let treinos=[];
-    if(ok.has('workouts')){ treinos=(await ler('treinos',()=>H.queryWorkouts({...per,limit:60}))).map(w=>({data:diaLocal(w.startDate),tipo:String(w.workoutType||'treino'),min:Math.round((+w.duration||0)/60),kcal:w.totalEnergyBurned?Math.round(+w.totalEnergyBurned):null})).slice(0,40); }
+    if(ok.has('steps')){ const am=await ler('passos','steps',()=>H.queryAggregated({...per('steps'),dataType:'steps',bucket:'day',aggregation:'sum'}));
+      if(am) am.forEach(x=>{ if(isFinite(+x.value)) D(diaLocal(x.startDate)).passos=Math.round(+x.value); }); 
+      // só na sincronização manual: de qual app vêm os passos de hoje (relógio x celular)
+      if(manual&&!parou){ const br=await ler('passosHojeBrutos','steps',()=>H.readSamples({startDate:meiaNoite(0).toISOString(),endDate:fim.toISOString(),dataType:'steps',limit:2000}));
+        if(br&&br.length){ const g={}; br.forEach(x=>{ const o=String(x.sourceName||x.sourceId||x.dataOrigin||x.packageName||'desconhecido'); g[o]=(g[o]||0)+(+x.value||0); }); diag.passosPorApp=g; } }
+    }
+    if(ok.has('heartRate')){
+      const pHR=per('heartRate');
+      const med=await ler('fcMedia','heartRate',()=>H.queryAggregated({...pHR,dataType:'heartRate',bucket:'day',aggregation:'average'}));
+      if(med) med.forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMedia=Math.round(+x.value); });
+      const mn=await ler('fcMin','heartRate',()=>H.queryAggregated({...pHR,dataType:'heartRate',bucket:'day',aggregation:'min'}));
+      if(mn) mn.forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMin=Math.round(+x.value); });
+    }
+    if(ok.has('restingHeartRate')&&!pular('restingHeartRate')){
+      const am=await ler('fcRepouso','restingHeartRate',()=>H.readSamples({...per('restingHeartRate'),dataType:'restingHeartRate',limit:300}));
+      if(am){ if(!am.length) vazio.restingHeartRate=fim.toISOString(); else delete vazio.restingHeartRate;
+        am.slice().sort((a,b)=>String(a.startDate).localeCompare(String(b.startDate))).forEach(x=>{ if(+x.value>0){ const d=D(diaLocal(x.startDate)); d.fcRepouso=Math.round(+x.value); delete d.fcRepousoEst; } }); }
+    }
+    if(ok.has('heartRateVariability')&&!pular('heartRateVariability')){
+      const am=await ler('hrv','heartRateVariability',()=>H.readSamples({...per('heartRateVariability'),dataType:'heartRateVariability',limit:500}));
+      if(am){ if(!am.length) vazio.heartRateVariability=fim.toISOString(); else delete vazio.heartRateVariability;
+        const soma={}; am.forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (soma[k]=soma[k]||[]).push(+x.value); } }); for(const k in soma){ D(k).hrv=Math.round(soma[k].reduce((a,b)=>a+b,0)/soma[k].length); } }
+    }
+    let peso=ant.peso||null;
+    const pesoVelho=!ant.pesoLido||(Date.now()-new Date(ant.pesoLido).getTime()>864e5);
+    let pesoLido=ant.pesoLido||null;
+    if(ok.has('weight')&&(pesoVelho||pend.has('weight'))){
+      const am=await ler('peso','weight',()=>H.readSamples({startDate:new Date(fim.getTime()-60*864e5).toISOString(),endDate:fim.toISOString(),dataType:'weight',limit:50}));
+      if(am){ pesoLido=fim.toISOString(); const ult=am.slice().sort((a,b)=>String(b.startDate).localeCompare(String(a.startDate)))[0]; if(ult&&+ult.value>0) peso={kg:Math.round(+ult.value*10)/10,data:diaLocal(ult.startDate)}; }
+    }
+    let treinos=(ant.treinos||[]).filter(t=>t.data>=corte);
+    if(ok.has('workouts')){
+      const ini=desde('workouts'); const am=await ler('treinos','workouts',()=>H.queryWorkouts({startDate:ini.toISOString(),endDate:fim.toISOString(),limit:60}));
+      if(am){ const k0=diaLocal(ini); treinos=treinos.filter(t=>t.data<k0).concat(am.map(w=>({data:diaLocal(w.startDate),tipo:String(w.workoutType||'treino'),min:Math.round((+w.duration||0)/60),kcal:w.totalEnergyBurned?Math.round(+w.totalEnergyBurned):null}))).sort((x,y)=>y.data.localeCompare(x.data)).slice(0,40); }
+    }
     // sem FC de repouso gravada pelo relógio: usa a menor frequência do dia como estimativa
-    for(const k in dias){ const d=dias[k]; if(!d.fcRepouso&&d.fcMin){ d.fcRepouso=d.fcMin; d.fcRepousoEst=true; } }
-    S.saude={sincronizado:new Date().toISOString(),dias,peso,treinos,permitidos:[...ok],diag};
+    for(const k in dias){ const d=dias[k]; if((!d.fcRepouso||d.fcRepousoEst)&&d.fcMin){ d.fcRepouso=d.fcMin; d.fcRepousoEst=true; } }
+    diag.janela=recente?'2 dias (somados aos anteriores)':'14 dias';
+    S.saude={sincronizado:fim.toISOString(),dias,peso,pesoLido,treinos,permitidos:[...ok],diag,vazio,pendentes:[...new Set(pendentes)],
+      pausaAte:diag.limite?new Date(Date.now()+15*60e3).toISOString():null};
     await save('saude',S.saude);
-    if(manual) toast(Object.keys(dias).length||treinos.length?'Dados do relógio atualizados.':'Nenhum dado encontrado nos últimos 14 dias. Confira se o app Moto Watch está sincronizando com o Conexão Saúde.');
+    if(manual){
+      if(diag.limite) toast('O Conexão Saúde limitou as leituras por agora. O que faltou vem na próxima sincronização, daqui a uns 15 min.');
+      else toast(Object.keys(dias).length||treinos.length?'Dados do relógio atualizados.':'Nenhum dado encontrado nos últimos 14 dias. Confira se o app Moto Watch está sincronizando com o Conexão Saúde.');
+    }
   }catch(e){ if(manual) toast((e&&e.msg)||'Não consegui ler o Conexão Saúde agora. Tente de novo.'); }
   S.saudeBusy=false; render();
 }
@@ -506,6 +548,7 @@ function recadoRecuperacao(){
 }
 
 const NOMES_SAUDE={sleep:'sono',heartRate:'frequência cardíaca',restingHeartRate:'FC de repouso',heartRateVariability:'HRV',steps:'passos',weight:'peso',workouts:'treinos'};
+const NOME_APP=(id)=>({'com.motorola.omni':'Moto Watch','com.motorola.watchapp':'Moto Watch','com.sec.android.app.shealth':'Samsung Health','com.google.android.apps.fitness':'Google Fit','com.google.android.apps.healthdata':'Celular (Conexão Saúde)','android':'Celular'}[id]||id);
 function diagSaude(sd){
   const g=sd&&sd.diag; if(!g) return '';
   const falta=TIPOS_SAUDE.filter(t=>!g.permitidos.includes(t)).map(t=>NOMES_SAUDE[t]);
@@ -516,7 +559,10 @@ function diagSaude(sd){
     <span>Permitido: ${h(g.permitidos.map(t=>NOMES_SAUDE[t]||t).join(', ')||'nada')}</span>
     ${falta.length?`<span>Sem permissão: ${h(falta.join(', '))}</span>`:''}
     <span>Registros lidos: ${h(contagem||'nenhum')}</span>
+    ${g.passosPorApp?`<span>Passos de hoje por app: ${h(Object.entries(g.passosPorApp).map(([k,v])=>NOME_APP(k)+' '+Math.round(v).toLocaleString('pt-BR')).join(' · '))}</span>`:''}
+    ${g.janela?`<span>Período lido: ${h(g.janela)}</span>`:''}
     ${erros?`<span>Erros: ${h(erros)}</span>`:''}
+    ${(sd.pendentes||[]).length?`<span>Fica para a próxima: ${h(sd.pendentes.map(t=>NOMES_SAUDE[t]||t).join(', '))}</span>`:''}
     ${g.amostraSono?`<span>Sono (1º registro): ${h(JSON.stringify(g.amostraSono))}</span>`:''}
   </div></details>`;
 }
@@ -1757,7 +1803,7 @@ async function carregarDados(){
   S.saude=lsGet('saude');
   S.ready=true; render(); window.scrollTo(0,0);
   // no app Android, atualiza o relógio sozinho se já foi autorizado e faz mais de 2 horas
-  if(NATIVO&&S.saude&&(Date.now()-new Date(S.saude.sincronizado).getTime()>2*3600e3)) sincronizarSaude(false);
+  if(NATIVO&&S.saude&&(Date.now()-new Date(S.saude.sincronizado).getTime()>((S.saude.pendentes||[]).length?15*60e3:2*3600e3))) sincronizarSaude(false);
 }
 
 // bloqueio automático: 5 minutos em segundo plano
