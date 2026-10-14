@@ -415,6 +415,7 @@ const diaLocal=(iso)=>{ const d=new Date(iso); return d.getFullYear()+'-'+String
 const minutos=(a,b)=>Math.max(0,(new Date(b)-new Date(a))/60000);
 
 // junta as amostras de sono por noite (data do despertar): total dormido, profundo e REM
+const ESTADO_SONO={1:'awake',2:'sleeping',3:'outofbed',4:'light',5:'deep',6:'rem',7:'awakeinbed'};
 function noitesDeSono(amostras){
   const noites={};
   for(const s of (amostras||[])){
@@ -422,8 +423,9 @@ function noitesDeSono(amostras){
     if(String(s.startDate)<String(n.inicio)) n.inicio=s.startDate; if(String(s.endDate)>String(n.fim)) n.fim=s.endDate;
     const partes=(Array.isArray(s.stages)&&s.stages.length)?s.stages.map(g=>({estado:g.stage,min:minutos(g.startDate,g.endDate)})):[{estado:s.sleepState||'asleep',min:isFinite(+s.value)&&+s.value>0?+s.value:minutos(s.startDate,s.endDate)}];
     for(const pt of partes){
-      if(pt.estado==='awake'||pt.estado==='inBed') continue;
-      n.min+=pt.min; if(pt.estado==='deep') n.profundo+=pt.min; if(pt.estado==='rem') n.rem+=pt.min;
+      const e=ESTADO_SONO[pt.estado]||String(pt.estado||'').toLowerCase();
+      if(/^(awake|inbed|outofbed|awakeinbed|out_of_bed|awake_in_bed)$/.test(e)) continue;
+      n.min+=pt.min; if(e==='deep') n.profundo+=pt.min; if(e==='rem') n.rem+=pt.min;
     }
   }
   for(const k in noites){ const n=noites[k]; n.min=Math.round(n.min); n.profundo=Math.round(n.profundo); n.rem=Math.round(n.rem); }
@@ -441,22 +443,39 @@ async function sincronizarSaude(manual){
     const aut=await H.requestAuthorization({read:TIPOS_SAUDE});
     const ok=new Set((aut&&aut.readAuthorized)||[]);
     if(!ok.size) throw {msg:'Sem permissão para ler os dados. Toque em Sincronizar e permita o acesso no Conexão Saúde.'};
-    const fim=new Date(), ini=new Date(fim.getTime()-14*864e5);
+    // períodos começando à meia-noite, para os totais por dia caírem no dia certo
+    const fim=new Date(); const ini=new Date(fim); ini.setHours(0,0,0,0); ini.setDate(ini.getDate()-13);
+    const iniSono=new Date(ini); iniSono.setDate(iniSono.getDate()-1);
     const per={startDate:ini.toISOString(),endDate:fim.toISOString()};
     const dias={}; const D=(k)=>dias[k]||(dias[k]={});
-    if(ok.has('steps')){ const r=await tentar(()=>H.queryAggregated({...per,dataType:'steps',bucket:'day',aggregation:'sum'})); (r&&r.samples||[]).forEach(x=>{ if(isFinite(+x.value)) D(diaLocal(x.startDate)).passos=Math.round(+x.value); }); }
+    const diag={permitidos:[...ok],negados:(aut&&aut.readDenied)||[],n:{},erros:{}};
+    const ler=async(rotulo,f)=>{ try{ const r=await f(); const lista=(r&&(r.samples||r.workouts))||[]; diag.n[rotulo]=lista.length; return lista; }catch(e){ diag.erros[rotulo]=String((e&&(e.message||e.code))||e).slice(0,120); return []; } };
+    if(ok.has('steps')){ (await ler('passos',()=>H.queryAggregated({...per,dataType:'steps',bucket:'day',aggregation:'sum'}))).forEach(x=>{ if(isFinite(+x.value)) D(diaLocal(x.startDate)).passos=Math.round(+x.value); }); }
     if(ok.has('heartRate')){
-      const r=await tentar(()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'average'})); (r&&r.samples||[]).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMedia=Math.round(+x.value); });
-      const m=await tentar(()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'max'})); (m&&m.samples||[]).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMax=Math.round(+x.value); });
+      const med=await ler('fcMedia',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'average'}));
+      med.forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMedia=Math.round(+x.value); });
+      (await ler('fcMax',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'max'}))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMax=Math.round(+x.value); });
+      (await ler('fcMin',()=>H.queryAggregated({...per,dataType:'heartRate',bucket:'day',aggregation:'min'}))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcMin=Math.round(+x.value); });
+      if(!med.length){ // sem agregado: calcula pelas medições
+        const am=await ler('fcAmostras',()=>H.readSamples({...per,dataType:'heartRate',limit:5000})); const g={};
+        am.forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (g[k]=g[k]||[]).push(+x.value); } });
+        for(const k in g){ const v=g[k]; Object.assign(D(k),{fcMedia:Math.round(v.reduce((a,b)=>a+b,0)/v.length),fcMax:Math.max(...v),fcMin:Math.min(...v)}); }
+      }
     }
-    if(ok.has('restingHeartRate')){ const r=await tentar(()=>H.readSamples({...per,dataType:'restingHeartRate',limit:300})); (r&&r.samples||[]).slice().sort((a,b)=>String(a.startDate).localeCompare(String(b.startDate))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcRepouso=Math.round(+x.value); }); }
-    if(ok.has('heartRateVariability')){ const r=await tentar(()=>H.readSamples({...per,dataType:'heartRateVariability',limit:500})); const soma={}; (r&&r.samples||[]).forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (soma[k]=soma[k]||[]).push(+x.value); } }); for(const k in soma){ D(k).hrv=Math.round(soma[k].reduce((a,b)=>a+b,0)/soma[k].length); } }
-    if(ok.has('sleep')){ const r=await tentar(()=>H.readSamples({...per,dataType:'sleep',limit:500})); const noites=noitesDeSono(r&&r.samples); for(const k in noites){ if(noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); } }
+    if(ok.has('restingHeartRate')){ (await ler('fcRepouso',()=>H.readSamples({...per,dataType:'restingHeartRate',limit:300}))).slice().sort((a,b)=>String(a.startDate).localeCompare(String(b.startDate))).forEach(x=>{ if(+x.value>0) D(diaLocal(x.startDate)).fcRepouso=Math.round(+x.value); }); }
+    if(ok.has('heartRateVariability')){ const soma={}; (await ler('hrv',()=>H.readSamples({...per,dataType:'heartRateVariability',limit:500}))).forEach(x=>{ if(+x.value>0){ const k=diaLocal(x.startDate); (soma[k]=soma[k]||[]).push(+x.value); } }); for(const k in soma){ D(k).hrv=Math.round(soma[k].reduce((a,b)=>a+b,0)/soma[k].length); } }
+    if(ok.has('sleep')){
+      const am=await ler('sono',()=>H.readSamples({startDate:iniSono.toISOString(),endDate:fim.toISOString(),dataType:'sleep',limit:1000}));
+      if(am[0]){ const x=am[0]; diag.amostraSono={campos:Object.keys(x).join(','),estado:x.sleepState||'',etapas:Array.isArray(x.stages)?x.stages.length:0,valor:x.value}; }
+      const noites=noitesDeSono(am); for(const k in noites){ if(noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); }
+    }
     let peso=null;
-    if(ok.has('weight')){ const r=await tentar(()=>H.readSamples({...per,startDate:new Date(fim.getTime()-60*864e5).toISOString(),dataType:'weight',limit:50})); const ult=(r&&r.samples||[]).slice().sort((a,b)=>String(b.startDate).localeCompare(String(a.startDate)))[0]; if(ult&&+ult.value>0) peso={kg:Math.round(+ult.value*10)/10,data:diaLocal(ult.startDate)}; }
+    if(ok.has('weight')){ const am=await ler('peso',()=>H.readSamples({startDate:new Date(fim.getTime()-60*864e5).toISOString(),endDate:fim.toISOString(),dataType:'weight',limit:50})); const ult=am.slice().sort((a,b)=>String(b.startDate).localeCompare(String(a.startDate)))[0]; if(ult&&+ult.value>0) peso={kg:Math.round(+ult.value*10)/10,data:diaLocal(ult.startDate)}; }
     let treinos=[];
-    if(ok.has('workouts')){ const r=await tentar(()=>H.queryWorkouts({...per,limit:60})); treinos=(r&&r.workouts||[]).map(w=>({data:diaLocal(w.startDate),tipo:String(w.workoutType||'treino'),min:Math.round((+w.duration||0)/60),kcal:w.totalEnergyBurned?Math.round(+w.totalEnergyBurned):null})).slice(0,40); }
-    S.saude={sincronizado:new Date().toISOString(),dias,peso,treinos,permitidos:[...ok]};
+    if(ok.has('workouts')){ treinos=(await ler('treinos',()=>H.queryWorkouts({...per,limit:60}))).map(w=>({data:diaLocal(w.startDate),tipo:String(w.workoutType||'treino'),min:Math.round((+w.duration||0)/60),kcal:w.totalEnergyBurned?Math.round(+w.totalEnergyBurned):null})).slice(0,40); }
+    // sem FC de repouso gravada pelo relógio: usa a menor frequência do dia como estimativa
+    for(const k in dias){ const d=dias[k]; if(!d.fcRepouso&&d.fcMin){ d.fcRepouso=d.fcMin; d.fcRepousoEst=true; } }
+    S.saude={sincronizado:new Date().toISOString(),dias,peso,treinos,permitidos:[...ok],diag};
     await save('saude',S.saude);
     if(manual) toast(Object.keys(dias).length||treinos.length?'Dados do relógio atualizados.':'Nenhum dado encontrado nos últimos 14 dias. Confira se o app Moto Watch está sincronizando com o Conexão Saúde.');
   }catch(e){ if(manual) toast((e&&e.msg)||'Não consegui ler o Conexão Saúde agora. Tente de novo.'); }
@@ -471,7 +490,7 @@ function resumoSaude(){
   const media=(campo,lista)=>{ const v=(lista||ult7).map(k=>sd.dias[k][campo]).filter(x=>isFinite(x)&&x>0); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null; };
   const noite=chaves.find(k=>sd.dias[k].sono);
   const r={ultimaNoite:noite?{data:noite,minutos:sd.dias[noite].sono,profundo:sd.dias[noite].sonoProfundo||0,rem:sd.dias[noite].sonoRem||0}:null,
-    sonoMedioMin:media('sono'), fcRepousoHoje:(sd.dias[hojeK]||{}).fcRepouso||null, fcRepousoMedia:media('fcRepouso'), hrvMedia:media('hrv'), passosHoje:(sd.dias[hojeK]||{}).passos||null, passosMedia:media('passos'),
+    sonoMedioMin:media('sono'), fcRepousoHoje:(sd.dias[hojeK]||{}).fcRepouso||null, fcRepousoEstimada:Object.values(sd.dias).some(d=>d.fcRepousoEst), fcMediaHoje:(sd.dias[hojeK]||{}).fcMedia||null, fcRepousoMedia:media('fcRepouso'), hrvMedia:media('hrv'), passosHoje:(sd.dias[hojeK]||{}).passos||null, passosMedia:media('passos'),
     treinos7d:(sd.treinos||[]).filter(t=>t.data>=diaLocal(Date.now()-7*864e5)).length, peso:sd.peso, atualizado:sd.sincronizado};
   return (r.ultimaNoite||r.fcRepousoMedia||r.passosMedia||r.treinos7d)?r:null;
 }
@@ -484,6 +503,22 @@ function recadoRecuperacao(){
   if(r.ultimaNoite&&r.ultimaNoite.data>=diaLocal(Date.now()-864e5)&&r.ultimaNoite.minutos<360) avisos.push('Noite curta ('+hm(r.ultimaNoite.minutos)+')');
   if(r.fcRepousoHoje&&r.fcRepousoMedia&&r.fcRepousoHoje>=r.fcRepousoMedia+7) avisos.push('FC de repouso '+r.fcRepousoHoje+' bpm, acima da sua média de '+r.fcRepousoMedia);
   return avisos.length?avisos.join(' e ')+'. Hoje, vá mais leve: tire 1 série de cada exercício e não force até a falha.':'';
+}
+
+const NOMES_SAUDE={sleep:'sono',heartRate:'frequência cardíaca',restingHeartRate:'FC de repouso',heartRateVariability:'HRV',steps:'passos',weight:'peso',workouts:'treinos'};
+function diagSaude(sd){
+  const g=sd&&sd.diag; if(!g) return '';
+  const falta=TIPOS_SAUDE.filter(t=>!g.permitidos.includes(t)).map(t=>NOMES_SAUDE[t]);
+  const contagem=Object.entries(g.n||{}).map(([k,v])=>k+': '+v).join(' · ');
+  const erros=Object.entries(g.erros||{}).map(([k,v])=>k+': '+v).join(' · ');
+  const aviso=(falta.includes('sono')||falta.includes('frequência cardíaca'))?`<p class="small" style="color:var(--warn-ink)">Sem permissão para ler ${falta.filter(x=>x==='sono'||x==='frequência cardíaca').join(' e ')}. Toque em <button class="btn plain" style="min-height:32px;padding:0 10px;font-size:13px" data-act="permSaude">Abrir permissões</button> e ative tudo para "Treino e Nutrição".</p>`:'';
+  return aviso+`<details class="small muted"><summary style="cursor:pointer;min-height:32px">Detalhes da leitura</summary><div class="stack-s" style="margin-top:6px;overflow-wrap:anywhere">
+    <span>Permitido: ${h(g.permitidos.map(t=>NOMES_SAUDE[t]||t).join(', ')||'nada')}</span>
+    ${falta.length?`<span>Sem permissão: ${h(falta.join(', '))}</span>`:''}
+    <span>Registros lidos: ${h(contagem||'nenhum')}</span>
+    ${erros?`<span>Erros: ${h(erros)}</span>`:''}
+    ${g.amostraSono?`<span>Sono (1º registro): ${h(JSON.stringify(g.amostraSono))}</span>`:''}
+  </div></details>`;
 }
 
 function cartaoRelogio(){
@@ -500,10 +535,11 @@ function cartaoRelogio(){
   return `<div class="card stack"><div class="row between"><div class="stack-s" style="gap:0"><h3>Relógio</h3><span class="small muted">Atualizado ${h(quando)}</span></div>${botao}</div>
     <div class="grid3">
       <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Sono</span><span class="num" style="font-size:26px">${n?hm(n.minutos):'—'}</span><span class="small muted">média ${hm(r.sonoMedioMin)}</span></div>
-      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">FC repouso</span><span class="num" style="font-size:26px">${r.fcRepousoHoje||r.fcRepousoMedia||'—'}<small> bpm</small></span><span class="small muted">${r.fcRepousoMedia?'média '+r.fcRepousoMedia:'sem dados'}</span></div>
+      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">FC repouso</span><span class="num" style="font-size:26px">${r.fcRepousoHoje||r.fcRepousoMedia||'—'}<small> bpm</small></span><span class="small muted">${r.fcRepousoMedia?(r.fcRepousoEstimada?'mín. do dia · média ':'média ')+r.fcRepousoMedia:'sem dados'}</span></div>
       <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Passos</span><span class="num" style="font-size:26px">${r.passosHoje!=null?num(r.passosHoje):'—'}</span><span class="small muted">${r.passosMedia?'média '+num(r.passosMedia):'hoje'}</span></div>
     </div>
     ${barras}
+    ${diagSaude(sd)}
     ${n&&(n.profundo||n.rem)?`<p class="small muted">Última noite: ${hm(n.profundo)} de sono profundo e ${hm(n.rem)} de REM${r.hrvMedia?' · HRV média '+r.hrvMedia+' ms':''}.</p>`:(r.hrvMedia?`<p class="small muted">HRV média ${r.hrvMedia} ms.</p>`:'')}
   </div>`;
 }
@@ -1530,6 +1566,7 @@ document.addEventListener('click', async (ev)=>{
     catch(e){S.busy=null;S.erro=erroIA(e);render();}
   }
   else if(a==='sincSaude'){ sincronizarSaude(true); }
+  else if(a==='permSaude'){ const H=plugSaude(); if(H){ try{ await H.openHealthConnectSettings(); }catch(e){ toast('Abra Configurações › Conexão Saúde › Permissões do app › Treino e Nutrição.'); } } }
   else if(a==='aplicarProposta'){ await aplicarProposta(+t.dataset.ix,false); }
   else if(a==='desfazerProposta'){ await aplicarProposta(+t.dataset.ix,true); }
   else if(a==='recusarProposta'){ const m=S.chat[+t.dataset.ix]; if(m&&m.proposta){ m.proposta.estado='recusada'; render(); } }
