@@ -1,0 +1,14 @@
+{
+  "appId": "br.treino.nutricao",
+  "appName": "Treino e Nutrição",
+  "webDir": "www",
+  "server": {
+    "url": "https://SEU-USUARIO.github.io/treino/",
+    "androidScheme": "https",
+    "errorPath": "index.html"
+  },
+  "android": {
+    "appendUserAgent": "TreinoNutricaoApp",
+    "allowMixedContent": false
+  }
+}

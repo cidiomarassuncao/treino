@@ -41,6 +41,15 @@ No app, toque em **Testar** antes de salvar. Se der "chave recusada", copie a ch
 
 Envie o `index.html` novo para o mesmo repositório (**Add file › Upload files**, substituindo o antigo). Os celulares pegam a versão nova na próxima vez que abrirem o app com internet. Os dados de cada pessoa continuam lá.
 
+## 4b. App Android com dados do relógio (Conexão Saúde)
+
+A versão instalada pelo Chrome não consegue ler o Conexão Saúde. Para ler sono, frequência cardíaca, passos e treinos do relógio, use o **app Android (APK)**, gerado pelo próprio GitHub a partir da pasta `android-app`.
+
+- O APK abre o mesmo site do GitHub Pages; atualizações do `index.html` chegam sozinhas, sem reinstalar.
+- O APK só precisa ser gerado de novo se a pasta `android-app` mudar.
+- O segredo `KEYSTORE_PASSWORD` (em Settings › Secrets and variables › Actions) guarda a senha da chave que assina o app. Guarde essa senha: sem ela, uma versão nova do APK não instala por cima da antiga.
+- Os dados do app Android ficam separados dos do Chrome. Para levar seus dados: no Chrome, Perfil › Salvar cópia; no APK, Perfil › Restaurar cópia. A chave de IA precisa ser colada de novo.
+
 ## 5. Senha e código de recuperação
 
 Na primeira abertura, o app pede para criar uma senha. Ela criptografa perfil, exames, plano e chave de IA no celular. O app pede a senha ao abrir e depois de 5 minutos fora dele.
@@ -58,7 +67,7 @@ Os dados ficam só no celular. Em **Perfil › Salvar cópia**, o app baixa um a
 ## Se algo der errado
 
 - **"O modelo informado não existe"**: os provedores aposentam modelos de tempos em tempos. Em **Configurar IA**, apague o campo Modelo para usar o padrão. Se o padrão também tiver saído, coloque o nome do modelo atual que aparece na página do provedor.
-- **Leitura do laudo saiu errada**: confira na tela de revisão, corrija o valor ou use **Digitar os valores**.
+- **Leitura do laudo saiu errada**: prefira o PDF original baixado do site do laboratório, não foto nem PDF escaneado. Laudos do Laboratório Unimed Litoral são lidos direto pelo app, sem IA. Na bioimpedância da Pratique, o app lê o texto direto e usa a IA só para os 8 números que o relatório traz como imagem; sem IA, esses campos ficam em branco para preencher. Os de outros laboratórios em PDF digital vão como texto para a IA, e só os escaneados ou fotos vão como imagem. Confira na tela de revisão, corrija o valor ou use **Digitar os valores**.
 - **Sem internet**: o app abre e mostra treino e dieta, mas não lê exames nem gera plano.
 
 O plano é uma orientação geral com base nos dados informados. Ele não substitui médico ou nutricionista.

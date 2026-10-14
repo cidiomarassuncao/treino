@@ -1,0 +1,5 @@
+Projeto do app Android (Capacitor). O APK é gerado pelo GitHub Actions
+(.github/workflows/gerar-apk.yml). Não é preciso mexer nestes arquivos.
+- treino.keystore: chave que assina o app; a senha fica no segredo KEYSTORE_PASSWORD.
+- capacitor.config.json: o endereço do site é preenchido sozinho na geração.
+- www/privacypolicy.html: política de privacidade exigida pelo Conexão Saúde.
