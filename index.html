@@ -526,7 +526,7 @@ function abrirRevisao(respostas,tipoInf,dataInf,avisos){
     const chave=normNome(i.nome)+'|'+i.valor; if(vistos.has(chave)) continue; vistos.add(chave); itens.push(i);
   }
   const obs=respostas.map(r=>r.observacao).filter(Boolean).slice(0,2).join(' ');
-  S.rascunho={id:uidGen(),tipo:pega('tipo')||tipoInf||'outro',data:pega('data')||dataInf||hoje(),laboratorio:pega('laboratorio'),observacao:obs,itens,avisos};
+  S.dup=null; S.rascunho={id:uidGen(),tipo:pega('tipo')||tipoInf||'outro',data:pega('data')||dataInf||hoje(),laboratorio:pega('laboratorio'),observacao:obs,itens,avisos};
   S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
 }
 
@@ -741,6 +741,25 @@ function telaAnalise(){
   return statusBox()+o;
 }
 
+const GRUPOS=[
+  {id:'sangue',nome:'Exames de sangue',curto:'Sangue'},
+  {id:'bioimpedancia',nome:'Bioimpedância',curto:'Bioimpedância'},
+  {id:'avaliacao',nome:'Avaliação física',curto:'Avaliação'},
+  {id:'outro',nome:'Outros exames',curto:'Outros'}
+];
+const grupoDe=(e)=>GRUPOS.some(g=>g.id===e.tipo)?e.tipo:'outro';
+
+function cartaoExame(e,maisRecente){
+  const alt=(e.itens||[]).filter(i=>i.situacao==='alto'||i.situacao==='baixo').length;
+  return `<div class="card stack-s" style="padding:14px 16px">
+    <div class="row between" style="align-items:flex-start"><div class="stack-s" style="gap:2px;min-width:0"><h3>${fmtData(e.data)}${maisRecente?' <span class="pill info" style="margin-left:4px;vertical-align:1px">Mais recente</span>':''}</h3>${e.laboratorio?`<span class="small muted">${h(e.laboratorio)}</span>`:''}</div>${alt?`<span class="pill warn">${alt} fora da faixa</span>`:'<span class="pill ok">Tudo na faixa</span>'}</div>
+    ${e.observacao?`<p class="small muted">${h(e.observacao)}</p>`:''}
+    <details${S.confirmDel===e.id?' open':''}><summary class="row between" style="cursor:pointer;list-style:none;min-height:44px"><span class="small" style="font-weight:700;color:var(--accent-ink)">Ver ${(e.itens||[]).length} valores</span>${ICON.arrow}</summary>
+    <div class="list" style="background:var(--surface-2)">${(e.itens||[]).map(i=>`<div class="li"><span class="txt"><strong style="font-size:15px">${h(i.nome)}</strong><span class="small muted">${h(i.valor)} ${h(i.unidade)}${i.referencia?' · ref. '+h(i.referencia):''}</span></span>${situ(i.situacao)}</div>`).join('')}
+    <div class="li">${S.confirmDel===e.id?`<span class="small">Apagar este exame?</span><span class="row"><button class="btn plain" style="min-height:44px" data-act="cancelDel">Não</button><button class="btn danger" style="min-height:44px" data-act="delExame" data-id="${h(e.id)}">Apagar</button></span>`:`<span></span><button class="btn plain" style="min-height:44px" data-act="askDel" data-id="${h(e.id)}">Apagar exame</button>`}</div></div>
+    </details></div>`;
+}
+
 function telaExames(){
   let o=`<div class="stack-s" style="gap:2px"><h1>Exames</h1><span class="small muted">Bioimpedância, sangue e avaliação física</span></div>`;
   o+=statusBox();
@@ -750,14 +769,13 @@ function telaExames(){
     <p class="note">Até ${MAX_PAGINAS} páginas por laudo, em PDF ou várias fotos de uma vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
     <button class="btn ghost block" data-act="digitar"${S.busy?' disabled':''}>Digitar os valores</button></div>`;
   if(!S.exames.length){o+=`<div class="card stack-s"><h3>Nenhum exame ainda</h3><p class="small muted">Comece pela bioimpedância mais recente e pelo último exame de sangue. O avaliador compara os valores com as referências do próprio laudo.</p></div>`;return o;}
-  o+=S.exames.map(e=>{
-    const alt=(e.itens||[]).filter(i=>i.situacao==='alto'||i.situacao==='baixo').length;
-    return `<div class="stack-s"><div class="row between"><h3>${h(TIPOS[e.tipo]||'Exame')} · ${fmtData(e.data)}</h3>${alt?`<span class="pill warn">${alt} fora da faixa</span>`:'<span class="pill ok">Tudo na faixa</span>'}</div>
-    ${e.observacao?`<p class="small muted">${h(e.observacao)}</p>`:''}
-    <details class="list"${S.confirmDel===e.id?' open':''}><summary class="li" style="cursor:pointer;list-style:none"><span class="small" style="font-weight:700;color:var(--accent-ink)">Ver ${(e.itens||[]).length} valores</span>${ICON.arrow}</summary>
-    ${(e.itens||[]).map(i=>`<div class="li"><span class="txt"><strong style="font-size:15px">${h(i.nome)}</strong><span class="small muted">${h(i.valor)} ${h(i.unidade)}${i.referencia?' · ref. '+h(i.referencia):''}</span></span>${situ(i.situacao)}</div>`).join('')}
-    <div class="li">${S.confirmDel===e.id?`<span class="small">Apagar este exame?</span><span class="row"><button class="btn plain" style="min-height:44px" data-act="cancelDel">Não</button><button class="btn danger" style="min-height:44px" data-act="delExame" data-id="${h(e.id)}">Apagar</button></span>`:`<span></span><button class="btn plain" style="min-height:44px" data-act="askDel" data-id="${h(e.id)}">Apagar exame</button>`}</div>
-    </details></div>`;}).join('');
+  const grupos=GRUPOS.map(g=>({...g,lista:S.exames.filter(e=>grupoDe(e)===g.id).sort((x,y)=>String(y.data).localeCompare(String(x.data)))})).filter(g=>g.lista.length);
+  const filtro=grupos.some(g=>g.id===S.filtroEx)?S.filtroEx:'todos';
+  if(grupos.length>1) o+=`<div class="chips" role="group" aria-label="Filtrar exames"><button class="chip" aria-pressed="${filtro==='todos'}" data-act="filtroEx" data-g="todos">Todos · ${S.exames.length}</button>${grupos.map(g=>`<button class="chip" aria-pressed="${filtro===g.id}" data-act="filtroEx" data-g="${g.id}">${h(g.curto)} · ${g.lista.length}</button>`).join('')}</div>`;
+  o+=grupos.filter(g=>filtro==='todos'||g.id===filtro).map(g=>`<section class="stack" aria-labelledby="g-${g.id}">
+    <div class="row between" style="align-items:baseline"><h2 id="g-${g.id}">${h(g.nome)}</h2><span class="small muted">${g.lista.length} exame${g.lista.length>1?'s':''}</span></div>
+    ${g.lista.map((e,ix)=>cartaoExame(e,ix===0&&g.lista.length>1)).join('')}
+  </section>`).join('');
   if(S.plano) o+=`<p class="note">Adicionou exame novo? Gere o plano de novo em Início › Ver análise para que ele entre na conta.</p>`;
   return o;
 }
@@ -770,6 +788,21 @@ function telaDigitar(){
   <button class="btn block" type="submit"${S.busy?' disabled':''}>Organizar valores</button></form>`;
 }
 
+function painelRepetido(){
+  const d=S.dup; const x=S.exames.find(e=>e.id===d.id); if(!x) return '';
+  const det=[];
+  if(d.diferentes) det.push(d.diferentes+' com valor diferente');
+  if(d.soNovo) det.push(d.soNovo+' só no novo');
+  if(d.soAtual) det.push(d.soAtual+' só no atual');
+  return `<div id="painelDup" class="card stack" role="alertdialog" aria-labelledby="dupTit" aria-describedby="dupTxt" style="border-color:var(--warn-ink)">
+    <div class="row" style="align-items:flex-start;color:var(--warn-ink)">${ICON.warn}<h3 id="dupTit" style="color:var(--fg)">Já existe ${h((TIPOS[x.tipo]||'exame').toLowerCase())} de ${fmtData(x.data)}</h3></div>
+    <p id="dupTxt" class="small muted">O salvo tem ${(x.itens||[]).length} valores e o novo tem ${S.rascunho.itens.length}. ${det.length?'Comparando: '+det.join(', ')+'.':'Os valores são iguais.'}</p>
+    ${d.lista.length?`<div class="list">${d.lista.slice(0,6).map(i=>`<div class="li"><span class="txt"><strong style="font-size:14px">${h(i.nome)}</strong><span class="small muted">Atual: ${h(i.atual||'—')} · Novo: ${h(i.novo||'—')}</span></span></div>`).join('')}${d.lista.length>6?`<div class="li"><span class="small muted">e mais ${d.lista.length-6}</span></div>`:''}</div>`:''}
+    <div class="grid2"><button type="button" class="btn plain" data-act="dupManter">Manter o atual</button><button type="button" class="btn" data-act="dupSubstituir">Substituir</button></div>
+    <button type="button" class="btn plain block" data-act="dupVoltar">Voltar e revisar</button>
+  </div>`;
+}
+
 function telaRevisar(){
   const r=S.rascunho;
   return header('Confira os valores',true)+`${(r.avisos||[]).map(a=>`<div class="alert warn">${ICON.warn}<span class="small">${h(a)}</span></div>`).join('')}
@@ -779,7 +812,7 @@ function telaRevisar(){
     <label class="f">Data<input id="rData" type="date" value="${h(r.data)}"></label></div>
     <div class="list">${r.itens.map((i,ix)=>`<div class="li" style="flex-wrap:wrap"><span class="txt" style="flex:1 1 140px"><strong>${h(i.nome)}</strong><span class="small muted">${i.referencia?'ref. '+h(i.referencia):'sem referência'}</span></span>
       <span class="row" style="flex:1 1 170px"><label class="sr" for="rv${ix}">Valor de ${h(i.nome)}</label><input id="rv${ix}" data-ix="${ix}" class="rv" value="${h(i.valor)}" style="flex:1;min-width:0"><span class="small muted" style="min-width:44px">${h(i.unidade)}</span><button type="button" class="iconbtn" data-act="rmItem" data-ix="${ix}" aria-label="Remover ${h(i.nome)}">×</button></span></div>`).join('')||'<div class="li"><span class="small muted">Nenhum valor encontrado.</span></div>'}</div>
-    <div class="grid2"><button type="button" class="btn plain" data-act="voltar">Descartar</button><button class="btn" type="submit"${r.itens.length?'':' disabled'}>Salvar exame</button></div>
+    ${S.dup?painelRepetido():`<div class="grid2"><button type="button" class="btn plain" data-act="voltar">Descartar</button><button class="btn" type="submit"${r.itens.length?'':' disabled'}>Salvar exame</button></div>`}
   </form>`;
 }
 
@@ -856,7 +889,8 @@ document.addEventListener('click', async (ev)=>{
   const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
-  if(a==='voltar'){ if(S.sub==='senha'||S.sub==='codigo'){S.sub=null;S.editPerfil=true;S.erro=null;S.novoCodigo=null;S.emailRasc=null;} else if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
+  if(a==='voltar'){ S.dup=null;
+    if(S.sub==='senha'||S.sub==='codigo'){S.sub=null;S.editPerfil=true;S.erro=null;S.novoCodigo=null;S.emailRasc=null;} else if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
   else if(a==='perfil'){S.editPerfil=true;render();window.scrollTo(0,0);}
   else if(a==='gerar'){ gerarPlano(); }
   else if(a==='analise'){S.sub='analise';render();window.scrollTo(0,0);}
@@ -884,6 +918,10 @@ document.addEventListener('click', async (ev)=>{
     try{await ia.chat([{role:'user',content:'Responda apenas: ok'}],{onStatus:(t)=>{S.busy={txt:t};render();}});S.busy=null;render();toast('Conexão funcionando.');}
     catch(e){S.busy=null;S.erro=erroIA(e);render();}
   }
+  else if(a==='filtroEx'){ S.filtroEx=t.dataset.g; render(); }
+  else if(a==='dupSubstituir'){ const id=S.dup&&S.dup.id; if(id) await salvarRascunho(id); }
+  else if(a==='dupManter'){ S.rascunho=null; S.dup=null; S.sub=null; S.tab='exames'; toast('O exame atual foi mantido. O novo foi descartado.'); render(); window.scrollTo(0,0); }
+  else if(a==='dupVoltar'){ S.dup=null; render(); const f=document.getElementById('rData'); if(f) f.scrollIntoView({block:'center'}); }
   else if(a==='esqueci'){S.lock='recuperar';S.erro=null;render();}
   else if(a==='semCodigo'){S.lock='apagar';S.erro=null;render();}
   else if(a==='copiarCodigo'){
@@ -925,6 +963,22 @@ document.addEventListener('click', async (ev)=>{
     toast('Cópia salva em Downloads. A chave de API não vai junto.');
   }
 });
+
+function compararExames(atual,novo){
+  const mapa=(lista)=>{const m=new Map();for(const i of (lista||[])){const k=normNome(i.nome);if(k&&!m.has(k))m.set(k,i);}return m;};
+  const A=mapa(atual.itens), N=mapa(novo.itens); const lista=[]; let diferentes=0, soNovo=0, soAtual=0;
+  const fmt=(i)=>i?(String(i.valor)+(i.unidade?' '+i.unidade:'')):'';
+  for(const [k,i] of N){ const a=A.get(k); if(!a){soNovo++; lista.push({nome:i.nome,atual:'',novo:fmt(i)});} else if(String(a.valor).replace(',','.').trim()!==String(i.valor).replace(',','.').trim()){diferentes++; lista.push({nome:i.nome,atual:fmt(a),novo:fmt(i)});} }
+  for(const [k,a] of A){ if(!N.has(k)){soAtual++; lista.push({nome:a.nome,atual:fmt(a),novo:''});} }
+  return {id:atual.id, diferentes, soNovo, soAtual, lista};
+}
+async function salvarRascunho(substituirId){
+  const r=S.rascunho; delete r.avisos; if(S.filtroEx&&S.filtroEx!=='todos') S.filtroEx=grupoDe(r);
+  const base=substituirId?S.exames.filter(e=>e.id!==substituirId):S.exames;
+  S.exames=[r].concat(base).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  await save('exames',S.exames); S.rascunho=null; S.dup=null; S.sub=null; S.tab='exames';
+  toast(substituirId?'Exame substituído.':'Exame salvo.'); render(); window.scrollTo(0,0);
+}
 
 function syncRev(){document.querySelectorAll('.rv').forEach(i=>{const r=S.rascunho.itens[+i.dataset.ix];if(r)r.valor=i.value;});const tp=document.getElementById('rTipo'),dt=document.getElementById('rData');if(tp)S.rascunho.tipo=tp.value;if(dt)S.rascunho.data=dt.value;}
 
@@ -992,9 +1046,10 @@ document.addEventListener('submit', async (ev)=>{
     lerExame(null,tx.slice(0,20000),document.getElementById('dTipo').value,document.getElementById('dData').value);
   }
   else if(f.id==='fRev'){
-    syncRev(); const r=S.rascunho; delete r.avisos; r.itens=r.itens.filter(i=>i.nome&&String(i.valor).trim());
-    S.exames=[r].concat(S.exames).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
-    await save('exames',S.exames); S.rascunho=null; S.sub=null; S.tab='exames'; toast('Exame salvo.'); render(); window.scrollTo(0,0);
+    syncRev(); const r=S.rascunho; r.itens=r.itens.filter(i=>i.nome&&String(i.valor).trim());
+    const dup=S.exames.find(e=>e.id!==r.id&&e.tipo===r.tipo&&String(e.data)===String(r.data));
+    if(dup){ S.dup=compararExames(dup,r); render(); const pn=document.getElementById('painelDup'); if(pn){ pn.scrollIntoView({behavior:'smooth',block:'center'}); const b=pn.querySelector('[data-act=dupManter]'); if(b) b.focus({preventScroll:true}); } return; }
+    await salvarRascunho(null);
   }
   else if(f.id==='fChat'){
     const el=document.getElementById('cMsg'); const q=el.value.trim(); if(!q||S.chat.some(m=>m.pend))return; perguntar(q.slice(0,2000));
@@ -1002,6 +1057,7 @@ document.addEventListener('submit', async (ev)=>{
 });
 document.addEventListener('change',(ev)=>{
   if(ev.target.classList.contains('mostrar')){ const f=ev.target.closest('form'); f.querySelectorAll('input[type=password],input[data-pw]').forEach(i=>{i.dataset.pw='1';i.type=ev.target.checked?'text':'password';}); return; }
+  if((ev.target.id==='rTipo'||ev.target.id==='rData')&&S.dup){ syncRev(); S.dup=null; render(); return; }
   if(ev.target.id==='cGuardei'){ S.guardei=ev.target.checked; const b=document.querySelector('[data-act=codigoOk]'); if(b) b.disabled=!S.guardei; return; }
   if(ev.target.id==='fArq'&&ev.target.files&&ev.target.files.length){ const fs=Array.from(ev.target.files); ev.target.value=''; lerExame(fs); }
   if(ev.target.id==='fImp'&&ev.target.files&&ev.target.files[0]){
