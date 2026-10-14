@@ -396,7 +396,7 @@ function erroIA(e){
 
 function contexto(){
   const p=S.perfil||{};
-  const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,i.referencia,i.situacao].filter(Boolean).join(' | '))}));
+  const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,refCurta(i.referencia),i.situacao,(i.anteriores&&i.anteriores.length)?'antes: '+i.anteriores.map(a=>a.valor+' em '+a.data).join(', '):''].filter(Boolean).join(' | '))}));
   return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex);
 }
 
@@ -433,11 +433,261 @@ Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, d
   }catch(e){S.busy=null;S.erro=erroIA(e);render();}
 }
 
-const MAX_PAGINAS = 40;   // páginas por laudo
-const LOTE = 4;           // páginas enviadas à IA por chamada
+/* ---------- leitura de laudos digitais (PDF com texto) ---------- */
+
+// Reconstrói as linhas da página a partir da posição de cada trecho de texto.
+// Espaços grandes entre trechos viram 3 espaços, para separar colunas.
+async function linhasDaPagina(page){
+  const tc = await page.getTextContent();
+  const its = [];
+  for (const i of tc.items){
+    if (!i.str || !i.str.trim()) continue;
+    its.push({s:i.str, x:i.transform[4], y:i.transform[5], w:i.width, h:Math.abs(i.transform[3])||Math.abs(i.transform[0])||8});
+  }
+  its.sort((a,b)=> (b.y-a.y) || (a.x-b.x));
+  const linhas = [];
+  for (const it of its){
+    const tol = Math.max(2, it.h*0.45);
+    let ln = null;
+    for (let k=linhas.length-1; k>=0 && k>=linhas.length-4; k--){ if (Math.abs(linhas[k].y-it.y) <= tol){ ln = linhas[k]; break; } }
+    if (!ln){ ln = {y:it.y, its:[]}; linhas.push(ln); }
+    ln.its.push(it);
+  }
+  return linhas.map(ln=>{
+    ln.its.sort((a,b)=>a.x-b.x);
+    let txt='', fim=null;
+    for (const it of ln.its){
+      const cw = it.s.length ? it.w/it.s.length : 5;
+      if (fim!==null){
+        const gap = it.x-fim;
+        if (gap > cw*1.6) txt += '   ';
+        else if (gap > cw*0.25 && !/\s$/.test(txt) && !/^\s/.test(it.s)) txt += ' ';
+      }
+      txt += it.s; fim = it.x + it.w;
+    }
+    return txt.replace(/ /g,' ').replace(/\s+$/,'');
+  });
+}
+
+async function textoDoPdf(pdf, max){
+  const paginas = [];
+  for (let i=1; i<=Math.min(pdf.numPages, max||60); i++){
+    const pg = await pdf.getPage(i);
+    paginas.push(await linhasDaPagina(pg));
+  }
+  return paginas;
+}
+
+const numBR = (t)=>{ // "2.677,48" -> 2677.48 ; "1.010" (densidade) -> 1.01 tratado pelo contexto
+  if (t==null) return NaN; let s=String(t).trim().replace(/\s/g,'');
+  if (!/^[<>≤≥]?[-+]?[\d.,]+$/.test(s)) return NaN;
+  s=s.replace(/^[<>≤≥]/,'');
+  if (s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,'');
+  return parseFloat(s);
+};
+const limpa = (t)=>String(t||'').replace(/\s+/g,' ').trim();
+const tituloCaso = (t)=>{ const m=limpa(t).toLowerCase(); const siglas=/\b(tgo|tgp|ast|alt|tsh|hdl|ldl|vldl|t3|t4|psa|vhs|a1c|hba1c|pcr|ggt|cpk|ck|dhea|fsh|lh|igf|shbg|b12|b9|rdw|vgm|hbgm|chbgm|hcm|chcm|vcm)\b/gi;
+  return m.replace(/(^|[\s(\-\/])([a-zà-ú])/g,(a,b,c)=>b+c.toUpperCase()).replace(siglas,s=>s.toUpperCase()).replace(/\bDe\b/g,'de').replace(/\bDa\b/g,'da').replace(/\bDo\b/g,'do').replace(/\bE\b/g,'e').replace(/\bA\b(?!1)/g,'a'); };
+
+// Lê um laudo no formato "um exame por página" com "Resultado:" e tabelas pontilhadas.
+// Devolve null quando o texto não tem esse formato (aí o app usa a IA).
+function lerLaudoTexto(paginas){
+  const todo = paginas.map(p=>p.join('\n')).join('\n');
+  if (!/Resultado\s*:/i.test(todo) && !/\.{4,}\s*:/.test(todo)) return null;
+  let data='', laboratorio='';
+  const md = todo.match(/Data\/Hora Atend\.?\s*:\s*(\d{2})\/(\d{2})\/(\d{4})/i) || todo.match(/Coleta\s*:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (md) data = md[3]+'-'+md[2]+'-'+md[1];
+  if (/UNIMED LITORAL/i.test(todo)) laboratorio='Unimed Litoral';
+  else { const ml = todo.match(/Laborat[óo]rio\s+(?:de\s+An[áa]lises\s+Cl[íi]nicas\s+)?([A-ZÀ-Ú][\wÀ-ú ]{2,30})/); if (ml) laboratorio=limpa(ml[1]); }
+
+  const itens = [];
+  const IGNORA = /^(Material|M[ée]todo|Coleta|Libera[çc][ãa]o|Notas?|Nota no laudo|Observa[çc][ãa]o|Fonte|Exame realizado|Paciente em jejum|Respons[áa]vel|ASSINATURA|Sr \(a\)|Idade|Dr \(a\)|Documento|Local coleta|"A interpreta)/i;
+
+  for (const linhas of paginas){
+    // corpo: entre a linha de sublinhados e a assinatura
+    let ini = linhas.findIndex(l=>/_{10,}/.test(l)); ini = ini<0?0:ini+1;
+    let fim = linhas.findIndex((l,i)=>i>ini && /ASSINATURA DIGITAL|Respons[áa]vel t[ée]cnico/i.test(l)); if (fim<0) fim=linhas.length;
+    const corpo = linhas.slice(ini,fim);
+    let titulo = '', secao='', colunasPct=false, pularAte=-1;
+    const ehUrina = ()=>/URINA/i.test(titulo);
+    for (let i=0;i<corpo.length;i++){
+      const raw = corpo[i]; const l = raw.trim(); if (!l || i<=pularAte) continue;
+      if (/^%\s+por\s+mm3/i.test(l)){ colunasPct=true; continue; }
+      // título: linha em maiúsculas que não é cabeçalho de campo
+      if (/^[A-ZÀ-Ú0-9][A-ZÀ-Ú0-9 \-–\/().,]{3,}$/.test(l) && !/:/.test(l) && !/[a-zà-ú]/.test(l) && !/^(ERITROGRAMA|LEUCOGRAMA)$/.test(l)){ titulo=l; secao=''; colunasPct=false; continue; }
+      if (/^(ERITROGRAMA|LEUCOGRAMA)\b/.test(l)){ secao=l.split(/\s{2,}/)[0]; colunasPct=false; continue; }
+
+      // 1) "Resultado:   valor   unidade   [referência na mesma linha]"
+      const mr = l.match(/^Resultado\s*:\s*(.+)$/i);
+      if (mr && titulo){
+        const cols = mr[1].split(/\s{2,}/).map(limpa).filter(Boolean);
+        let valor = cols[0]||'', unidade = '', refInline='';
+        const mv = valor.match(/^([<>≤≥]?\s*[\d.,]+)\s*(.*)$/);
+        if (mv){ valor=mv[1].replace(/\s/g,''); unidade=mv[2]; }
+        let k=1;
+        if (!unidade && cols[k] && !/\d+\s*a\s*\d|inferior|superior|n[ãa]o diab/i.test(cols[k])) { unidade=cols[k]; k++; }
+        if (cols[k]) refInline = cols.slice(k).join(' ');
+        // referência: na mesma linha, ou depois de "Valor de Referência:"
+        let refLinhas = [];
+        if (refInline) refLinhas.push(refInline);
+        let j=i+1;
+        for (;j<corpo.length && j<i+16;j++){
+          const lj = corpo[j].trim();
+          if (!lj){ if (refLinhas.length) break; else continue; }
+          if (/^Resultado\s*:/i.test(lj) || /^Resultados anteriores/i.test(lj)) break;
+          if (IGNORA.test(lj) && !/^Valor(?:es)? de Refer/i.test(lj)){ if (refLinhas.length) break; else continue; }
+          if (/^[A-ZÀ-Ú0-9][A-ZÀ-Ú0-9 \-–\/().,]{3,}$/.test(lj) && !/[a-zà-ú]/.test(lj)) break;
+          const mref = lj.match(/^Valor(?:es)? de Refer[êe]ncia\s*:?\s*(.*)$/i);
+          if (mref){ if (mref[1]) refLinhas.push(mref[1]); continue; }
+          if (refInline || refLinhas.length) refLinhas.push(lj);
+        }
+        if (refLinhas.length) pularAte = j-1;
+        // referência que vem ANTES (coluna à direita da linha de cima, ex.: "Valor de Referência:" acima do resultado)
+        if (!refLinhas.length){
+          for (let j=i-1;j>=Math.max(0,i-3);j--){ const mm=corpo[j].match(/Valor(?:es)? de Refer[êe]ncia\s*:\s*(.+)$/i); if (mm){ refLinhas.push(mm[1]); break; } }
+        }
+        const anteriores = lerAnteriores(corpo, i);
+        const nome = (/^(ESTIMATIVA DA TAXA DE FILTRA)/i.test(titulo)) ? 'Taxa de filtração glomerular (estimada)' : tituloCaso(titulo.replace(/\s*-\s*(TGO|TGP)\/(AST|ALT)$/i,' ($1/$2)').replace(/\s+DILU[ÍI]DA$/i,''));
+        itens.push({nome, valor, unidade:limpa(unidade), referencia:juntarRef(refLinhas).slice(0,320), anteriores, situacao:'sem_referencia'});
+        continue;
+      }
+
+      // 2) tabelas pontilhadas: "Hemoglobina (g/dL).......:   14,8    13,3 a 16,7 g/dL"
+      const mt = raw.match(/^\s*(.+?)\s*\.{3,}\s*([^:]{0,8}?)\s*:\s*(.*)$/);
+      if (mt && titulo){
+        let nome = limpa(mt[1]); let unidade = limpa(mt[2]);
+        const mu = nome.match(/^(.*?)\s*\(([^)]+)\)\s*$/); if (mu){ nome=mu[1]; unidade=unidade||mu[2]; }
+        if (/c[ée]lulas contadas/i.test(nome)) continue;
+        const cols = mt[3].split(/\s{2,}/).map(limpa).filter(Boolean);
+        if (!cols.length) continue;
+        const sufixo = ehUrina() ? ' (urina)' : '';
+        // leucograma: "%   absoluto   referência do absoluto"
+        if (colunasPct && cols.length>=3 && !isNaN(numBR(cols[0])) && !isNaN(numBR(cols[1])) && cols[2]!=='a'){
+          itens.push({nome:nome+' (%)'+sufixo, valor:cols[0], unidade:'%', referencia:'', anteriores:[], situacao:'sem_referencia'});
+          itens.push({nome:nome+sufixo, valor:cols[1], unidade:unidade||'/mm3', referencia:limpa(cols.slice(2).join(' ')), anteriores:[], situacao:'sem_referencia'});
+          continue;
+        }
+        let valor = cols[0]; let ref = cols.slice(1).join(' ');
+        const vu = valor.match(/^([\d.,]+)\s+(\/?\S+)$/); if (vu){ valor=vu[1]; unidade=unidade||vu[2]; }
+        if (!unidade){ const ru = ref.match(/^(\/\S+|[a-zµμ%][\w/µμ%]*)\s{1,}(.*)$/i); if (ru && /\/|%|dl|mm3|ml|l$/i.test(ru[1])){ unidade=ru[1]; ref=ru[2]; } }
+        if (isNaN(numBR(valor))) unidade='';
+        itens.push({nome:nome+sufixo, valor, unidade, referencia:limpa(ref), anteriores:[], situacao:'sem_referencia'});
+      }
+    }
+  }
+  if (!itens.length) return null;
+  const tipo = /bioimped/i.test(todo) ? 'bioimpedancia' : 'sangue';
+  return {tipo, data, laboratorio, itens, observacao:''};
+}
+
+// junta as linhas da referência: "- item" ou "Rótulo: valor" começam parte nova; o resto continua a anterior
+function juntarRef(linhas){
+  const partes=[];
+  for (const bruto of linhas){
+    const l=limpa(bruto).replace(/\.{3,}\s*:/g,':'); if (!l) continue;
+    if (partes.length && /:\s*$/.test(partes[partes.length-1]) && !/^-\s/.test(l)) partes[partes.length-1]+=' '+l;
+    else if (!partes.length || /^-\s/.test(l) || /^[^:]{2,70}:/.test(l) || /^\*/.test(l)) partes.push(l.replace(/^-\s*/,''));
+    else partes[partes.length-1]+=' '+l;
+  }
+  return partes.filter(p=>!/^\*/.test(p)).join('; ');
+}
+
+function lerAnteriores(corpo, desde){
+  const out=[];
+  for (let j=desde+1;j<corpo.length;j++){
+    const l=corpo[j].trim();
+    if (/^Resultado\s*:/i.test(l)) break;
+    const m = l.match(/^Resultados anteriores\s*:\s*(.*)$/i);
+    const alvo = m ? m[1] : (out.length ? l : null);
+    if (alvo==null) continue;
+    const mm = alvo.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*-\s*([\d.,]+)/);
+    if (mm){ const v=numBR(mm[4]); out.push({data:mm[3]+'-'+mm[2]+'-'+mm[1], valor: isNaN(v)?mm[4]:String(+v.toFixed(2)).replace('.',',')}); }
+    else if (out.length) break;
+  }
+  return out;
+}
+
+/* ---------- situação: normal, baixo ou alto, a partir da referência ---------- */
+const PALAVRAS_FAIXA_BOA = /(normal|adequad|desej[áa]vel|ideal|n[ãa]o diab|normoglic|com ou sem jejum|com jejum|homens?|masculino|risco card[íi]aco baixo|adultos)/i;
+function faixaDe(texto){
+  const t = String(texto||'').replace(/(\d)\s*,\s*(\d)/g,'$1,$2');
+  let m;
+  const N = '([\\d.]+(?:,\\d+)?)';
+  if ((m = t.match(new RegExp('(?:de\\s+)?'+N+'\\s*(?:a|-|até)\\s*'+N,'i')))) return {min:numBR(m[1]), max:numBR(m[2])};
+  if ((m = t.match(new RegExp('(?:inferior|abaixo|menor)\\s+(?:ou igual\\s+)?(?:a|de)\\s+'+N,'i')))) return {min:-Infinity, max:numBR(m[1])};
+  if ((m = t.match(new RegExp('(?:superior|acima|maior)\\s+(?:ou igual\\s+)?(?:a|de)\\s+'+N,'i')))) return {min:numBR(m[1]), max:Infinity};
+  if ((m = t.match(new RegExp('^\\s*[<≤]\\s*'+N)))) return {min:-Infinity, max:numBR(m[1])};
+  if ((m = t.match(new RegExp('^\\s*[>≥]\\s*'+N)))) return {min:numBR(m[1]), max:Infinity};
+  return null;
+}
+// Tenta classificar sozinho. Devolve 'normal' | 'alto' | 'baixo' | null (ambíguo: deixa para a IA)
+function classificar(item, perfil){
+  const ref = String(item.referencia||''); if (!ref) return null;
+  const v = numBR(item.valor);
+  // valores em texto (urina): igual à referência = normal
+  if (isNaN(v)){
+    const val = limpa(item.valor).toLowerCase(); if (!val) return null;
+    const opcoes = ref.toLowerCase().split(/[\/;]|\bou\b/).map(limpa);
+    if (opcoes.some(o=>o && (o===val || o.startsWith(val) || val.startsWith(o)))) return 'normal';
+    if (/ausente|negativo|normal|n[ãa]o reagente/.test(ref.toLowerCase()) && !/ausente|negativo|normal|discreta|n[ãa]o reagente/.test(val)) return 'alto';
+    return null;
+  }
+  return _classificarFaixa(faixasDaPessoa(ref, perfil), v);
+}
+function faixasDaPessoa(ref, perfil){
+  // "Feminino: 21 a 49 anos: x" vira partes separadas de rótulo e faixa
+  const partes = String(ref||'').split(';').map(limpa).filter(Boolean).flatMap(p=>{ const m=p.match(/^(homens?|masculino|mulher(?:es)?|feminino)\s*:\s*(.+)$/i); return (m && /anos/.test(m[2])) ? [m[1]+':', m[2]] : [p]; });
+  const sexo = (perfil&&perfil.sexo)||'masculino'; const idade = +((perfil&&perfil.idade)||0);
+  let cand = partes;
+  // separa por sexo quando a referência traz faixas de homem e mulher
+  if (partes.some(p=>/(homens?|masculino|mulher(es)?|feminino)\s*:/i.test(p))){
+    const fem = /^f/i.test(sexo); let atual=null; const sel=[];
+    for (const p of partes){
+      const ms = p.match(/^(homens?|masculino|mulher(?:es)?|feminino)\s*:\s*(.*)$/i);
+      if (ms){ atual = /^(mulher|feminino)/i.test(ms[1]) ? 'f':'m'; if (ms[2] && (atual==='f')===fem) sel.push(ms[2]); continue; }
+      if (atual && (atual==='f')===fem) sel.push(p);
+    }
+    if (sel.length) cand = sel;
+  }
+  // faixas por idade: "21 a 49 anos....: 47,01 a 980,56"
+  if (cand.some(p=>/anos/.test(p)) && idade){
+    const porIdade = cand.filter(p=>{ const m=p.match(/(\d+)\s*a\s*(\d+)\s*anos/); if(m) return idade>=+m[1]&&idade<=+m[2]; const s=p.match(/(?:superior|maior)[^\d]*(\d+)\s*anos/i); if(s) return idade>=+s[1]; return false; })
+      .map(p=>p.replace(/^.*?anos[.\s:]*/,''));
+    if (porIdade.length) cand = porIdade;
+  }
+  return cand;
+}
+function _classificarFaixa(cand, v){
+  let faixa=null;
+  if (cand.length===1) faixa = faixaDe(cand[0]);
+  else {
+    const boa = cand.find(p=>PALAVRAS_FAIXA_BOA.test(p) && faixaDe(p.replace(/^[^:]*:/,'')));
+    if (boa) faixa = faixaDe(boa.replace(/^[^:]*:/,''));
+  }
+  if (!faixa || isNaN(faixa.min)&&isNaN(faixa.max)) return null;
+  if (v < faixa.min) return 'baixo';
+  if (v > faixa.max) return 'alto';
+  return 'normal';
+}
+// texto da referência só com a parte que vale para a pessoa (sexo e idade), para mostrar na tela
+function refDaPessoa(ref, perfil){
+  const partes = String(ref||'').split(';').map(limpa).filter(Boolean);
+  const cand = faixasDaPessoa(ref, perfil);
+  return (cand.length && cand.length < partes.length) ? cand.join('; ') : String(ref||'');
+}
+
+const MAX_PAGINAS = 40;   // páginas lidas como imagem (laudo escaneado ou foto)
+const LOTE = 4;           // páginas enviadas à IA por chamada, no modo imagem
+const LOTE_TEXTO = 6;     // páginas de texto por chamada, para laudos de outros laboratórios
 
 const normNome = (t)=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9%]+/g,' ').trim();
-const limparItem = (i)=>({nome:String(i.nome||'').trim(),valor:String(i.valor??'').trim(),unidade:String(i.unidade||'').trim(),referencia:String(i.referencia||'').trim(),situacao:String(i.situacao||'sem_referencia')});
+const limparItem = (i)=>{ const o={nome:String(i.nome||'').trim(),valor:String(i.valor??'').trim(),unidade:String(i.unidade||'').trim(),referencia:String(i.referencia||'').trim(),situacao:String(i.situacao||'sem_referencia')};
+  if(Array.isArray(i.anteriores)&&i.anteriores.length) o.anteriores=i.anteriores.slice(0,4).map(a=>({data:String(a.data||''),valor:String(a.valor??'')})); return o; };
+
+// nomes mais curtos para exames conhecidos
+const APELIDOS=[[/^Transaminase Glut[âa]mico Oxalac[ée]tica/i,'TGO (AST)'],[/^Transaminase Glut[âa]mico Pir[úu]vica/i,'TGP (ALT)'],[/^TSH\b/i,'TSH'],[/^Hemoglobina Glicada/i,'Hemoglobina glicada (A1C)'],[/^Velocidade de Hemossedimenta/i,'VHS (hemossedimentação)'],[/^Zinco S[ée]rico/i,'Zinco'],[/^Colesterol HDL/i,'Colesterol HDL'],[/^Colesterol LDL/i,'Colesterol LDL']];
+const apelido=(n)=>{ for(const [re,novo] of APELIDOS){ if(re.test(n)) return novo; } return n; };
 
 function promptLaudo(origem, tipoInf, dataInf){
   return `Você extrai dados de laudos de saúde (exame de sangue, bioimpedância, avaliação física) em português.
@@ -445,22 +695,13 @@ ${origem}
 ${tipoInf?'Tipo informado: '+tipoInf+'.':''} ${dataInf?'Data informada: '+dataInf+'.':''}
 Responda SOMENTE com JSON:
 {"tipo":"sangue|bioimpedancia|avaliacao|outro","data":"AAAA-MM-DD ou vazio","laboratorio":"nome ou vazio","itens":[{"nome":"Glicose","valor":"102","unidade":"mg/dL","referencia":"70 a 99","situacao":"normal|baixo|alto|sem_referencia"}],"observacao":"1 frase com o que chamou atenção, sem diagnóstico, ou vazio"}
-Copie valores e referências exatamente como estão. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Em hemograma e urina, use o nome completo do item (ex.: "Leucócitos (urina)") para não confundir com o do sangue. Não invente itens que não aparecem. Páginas sem resultados (capa, instruções, assinatura) geram "itens":[].`;
+Copie valores e referências exatamente como estão. Inclua TODOS os resultados, um por item: no hemograma, cada linha (hemácias, hemoglobina, leucócitos, plaquetas etc.); na urina, cada parâmetro com "(urina)" no nome. Para bioimpedância, inclua peso, % de gordura, massa muscular, gordura visceral, água e taxa metabólica quando houver. Não invente itens que não aparecem. Páginas sem resultados (capa, instruções, assinatura) geram "itens":[].`;
 }
 
-// Lista as páginas sem renderizar ainda: imagens prontas ou páginas de PDF
-async function listarPaginas(files){
-  const lib=window.pdfjsLib; const pags=[]; let total=0;
-  for(const f of files){
-    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
-      if(!lib) throw {code:'pdf'};
-      let pdf;
-      try{ lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; pdf=await lib.getDocument({data:await f.arrayBuffer()}).promise; }
-      catch(e){ throw {code:'pdf'}; }
-      for(let i=1;i<=pdf.numPages;i++){ total++; if(pags.length<MAX_PAGINAS) pags.push({pdf,n:i}); }
-    }else{ total++; if(pags.length<MAX_PAGINAS) pags.push({blob:f}); }
-  }
-  return {pags,total};
+async function abrirPdf(f){
+  const lib=window.pdfjsLib; if(!lib) throw {code:'pdf'};
+  try{ lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; return await lib.getDocument({data:await f.arrayBuffer()}).promise; }
+  catch(e){ throw {code:'pdf'}; }
 }
 async function renderPagina(p){
   if(p.blob) return p.blob;
@@ -472,53 +713,94 @@ async function renderPagina(p){
     const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85)); c.width=c.height=0; return b;
   }catch(e){ throw {code:'pdf'}; }
 }
+const temTexto=(paginas)=>{ const chars=paginas.reduce((n,p)=>n+p.join('').replace(/\s/g,'').length,0); return chars >= 150*Math.max(1,paginas.length)*0.5; };
+
+// chama a IA aguardando uma vez se bater o limite por minuto
+async function iaComPausa(prompt,opts,status,msg){
+  try{ return await ia.json(prompt,opts); }
+  catch(e){ if(e&&e.code==='rate_limited'){ status('Limite por minuto da IA atingido. Aguardando 30 segundos para continuar…'); await espera(30000); status(msg); return await ia.json(prompt,opts); } throw e; }
+}
+const FATAIS=['sem_chave','chave','offline','cancelled','rate_limited','modelo'];
+
+// lê em lotes (texto ou imagem), juntando o que der certo e anotando o que falhar
+async function lerEmLotes(lotes,montar,status,rotulo){
+  const respostas=[], falhas=[]; let erroFatal=null;
+  for(let k=0;k<lotes.length;k++){
+    const faixa=lotes[k].faixa; const msg=lotes.length===1?'Lendo os valores do laudo. Isso leva alguns segundos.':'Lendo '+faixa+' de '+rotulo+'…';
+    status(msg);
+    try{ const {prompt,opts}=await montar(lotes[k]); const r=await iaComPausa(prompt,Object.assign({onStatus:status},opts),status,msg); if(r&&Array.isArray(r.itens)) respostas.push(r); else falhas.push(faixa); }
+    catch(e){ if(FATAIS.includes(e&&e.code)){ erroFatal=e; falhas.push(faixa+' em diante'); break; } falhas.push(faixa); }
+  }
+  return {respostas,falhas,erroFatal};
+}
+const faixaTxt=(ini,fim)=>ini===fim?'página '+ini:'páginas '+ini+' a '+fim;
+
+// classifica pela IA só o que a regra não resolveu; se a IA falhar, fica "sem referência"
+async function classificarAmbiguos(itens,status){
+  const amb=itens.map((i,ix)=>({i,ix})).filter(o=>o.i.situacao==='sem_referencia'&&o.i.referencia&&String(o.i.valor).trim());
+  if(!amb.length||!iaPronta()) return;
+  status('Conferindo '+amb.length+' valor'+(amb.length>1?'es':'')+' com referência por faixa…');
+  const p=S.perfil||{};
+  const prompt=`Classifique cada resultado de exame comparando com a referência do próprio laudo, para uma pessoa do sexo ${p.sexo||'não informado'} com ${p.idade||'idade não informada'} anos.
+Quando a referência tiver várias faixas (por sexo, idade ou risco), use a faixa da pessoa; para risco cardíaco não informado, use o risco baixo.
+Responda SOMENTE com JSON no formato {"0":"normal","3":"alto"} usando os números abaixo e um destes valores: normal, alto, baixo, sem_referencia.
+${amb.map((o,n)=>n+') '+o.i.nome+': '+o.i.valor+' '+o.i.unidade+' | referência: '+o.i.referencia).join('\n')}`;
+  try{ const r=await ia.json(prompt,{onStatus:status}); amb.forEach((o,n)=>{ const v=String(r&&r[n]||'').toLowerCase(); if(['normal','alto','baixo'].includes(v)) itens[o.ix].situacao=v; }); }
+  catch(e){ /* sem IA: fica como está */ }
+}
 
 async function lerExame(files, texto, tipoInf, dataInf){
-  if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
   S.busy={tipo:'exame',txt:'Lendo o laudo…'};S.erro=null;render();
   const status=(t)=>{S.busy={tipo:'exame',txt:t};render();};
   try{
     // texto digitado: uma chamada só
     if(!files||!files.length){
-      const r=await ia.json(promptLaudo('Texto digitado pela pessoa:\n+texto+',tipoInf,dataInf),{onStatus:status});
+      if(!iaPronta()) throw {code:'sem_chave'};
+      const r=await ia.json(promptLaudo('Texto digitado pela pessoa:\n"""\n'+texto+'\n"""',tipoInf,dataInf),{onStatus:status});
       if(!r||!Array.isArray(r.itens)) throw {code:'invalid_json'};
       abrirRevisao([r],tipoInf,dataInf,[]); return;
     }
     status('Abrindo o laudo…');
-    const {pags,total}=await listarPaginas(files);
-    if(!pags.length) throw {code:'image_rejected'};
-    const lotes=[]; for(let i=0;i<pags.length;i+=LOTE) lotes.push(pags.slice(i,i+LOTE));
-    const respostas=[], falhas=[]; let erroFatal=null;
-    for(let k=0;k<lotes.length;k++){
-      const ini=k*LOTE+1, fim=ini+lotes[k].length-1, faixa=ini===fim?'página '+ini:'páginas '+ini+' a '+fim;
-      const msg=pags.length<=LOTE?'Lendo os valores do laudo. Isso leva alguns segundos.':'Lendo '+faixa+' de '+pags.length+'…';
-      status(msg);
-      try{
-        const imgs=[]; for(const p of lotes[k]) imgs.push(await renderPagina(p));
-        const origem = 'As imagens anexas são as '+faixa+' de um laudo com '+pags.length+' páginas.';
-        let r;
-        try{ r=await ia.json(promptLaudo(origem,tipoInf,dataInf),{images:imgs,onStatus:status}); }
-        catch(e){
-          // limite por minuto do plano gratuito: espera e tenta uma vez
-          if(e&&e.code==='rate_limited'){ status('Limite por minuto da IA atingido. Aguardando 30 segundos para continuar…'); await espera(30000); status(msg); r=await ia.json(promptLaudo(origem,tipoInf,dataInf),{images:imgs,onStatus:status}); }
-          else throw e;
+    const respostas=[], avisos=[], falhas=[], imagens=[]; let erroFatal=null, totalImg=0, usouLeitorProprio=false;
+    for(const f of files){
+      if(!(f.type==='application/pdf'||/\.pdf$/i.test(f.name))){ totalImg++; if(imagens.length<MAX_PAGINAS) imagens.push({blob:f}); continue; }
+      const pdf=await abrirPdf(f);
+      status('Lendo o texto do PDF…');
+      let paginas=[]; try{ paginas=await textoDoPdf(pdf,80); }catch(e){ paginas=[]; }
+      if(paginas.length && temTexto(paginas)){
+        // 1) formato conhecido: lê sem IA
+        const proprio=lerLaudoTexto(paginas);
+        if(proprio&&proprio.itens.length>=3){
+          const perfil=S.perfil||{};
+          proprio.itens.forEach(i=>{ i.nome=apelido(i.nome); const c=classificar(i,perfil); if(c) i.situacao=c; });
+          respostas.push(proprio); usouLeitorProprio=true; continue;
         }
-        if(r&&Array.isArray(r.itens)) respostas.push(r); else falhas.push(faixa);
-      }catch(e){
-        const c=e&&e.code;
-        if(['sem_chave','chave','offline','cancelled','rate_limited','modelo'].includes(c)){ erroFatal=e; falhas.push('páginas '+ini+' em diante'); break; }
-        falhas.push(faixa);
+        // 2) outro laboratório com texto: manda o texto para a IA (mais rápido e preciso que imagem)
+        if(!iaPronta()) throw {code:'sem_chave'};
+        const lotes=[]; for(let i=0;i<paginas.length;i+=LOTE_TEXTO){ const fim=Math.min(paginas.length,i+LOTE_TEXTO); lotes.push({ini:i+1,fim,faixa:faixaTxt(i+1,fim),txt:paginas.slice(i,fim).map((p,k)=>'--- página '+(i+k+1)+' ---\n'+p.join('\n')).join('\n').slice(0,24000)}); }
+        const r=await lerEmLotes(lotes,async(l)=>({prompt:promptLaudo('Texto extraído das '+l.faixa+' de um laudo com '+paginas.length+' páginas (colunas separadas por espaços):\n"""\n'+l.txt+'\n"""',tipoInf,dataInf),opts:{}}),status,paginas.length+' páginas');
+        respostas.push(...r.respostas); falhas.push(...r.falhas); if(r.erroFatal) erroFatal=r.erroFatal;
+        continue;
       }
+      // 3) PDF escaneado: vira imagem
+      for(let i=1;i<=pdf.numPages;i++){ totalImg++; if(imagens.length<MAX_PAGINAS) imagens.push({pdf,n:i}); }
+    }
+    if(imagens.length){
+      if(!iaPronta()) throw {code:'sem_chave'};
+      const lotes=[]; for(let i=0;i<imagens.length;i+=LOTE){ const fim=Math.min(imagens.length,i+LOTE); lotes.push({faixa:faixaTxt(i+1,fim),pags:imagens.slice(i,fim),n:imagens.length}); }
+      const r=await lerEmLotes(lotes,async(l)=>{ const imgs=[]; for(const p of l.pags) imgs.push(await renderPagina(p)); return {prompt:promptLaudo('As imagens anexas são as '+l.faixa+' de um laudo com '+l.n+' páginas.',tipoInf,dataInf),opts:{images:imgs}}; },status,imagens.length+' páginas');
+      respostas.push(...r.respostas); falhas.push(...r.falhas); if(r.erroFatal) erroFatal=r.erroFatal;
+      if(totalImg>imagens.length) avisos.push('O laudo tem '+totalImg+' páginas em imagem. Li as '+imagens.length+' primeiras; envie o resto como outro exame.');
     }
     if(!respostas.some(r=>r.itens.length)) throw erroFatal||{code:'invalid_json'};
-    const avisos=[];
-    if(total>pags.length) avisos.push('O laudo tem '+total+' páginas. Li as '+pags.length+' primeiras; envie o resto como outro exame.');
     if(falhas.length) avisos.push('Não consegui ler: '+falhas.join(', ')+'. Confira esses valores no laudo e use "Digitar os valores" se faltar algo.');
-    abrirRevisao(respostas,tipoInf,dataInf,avisos);
+    const rasc=montarRascunho(respostas,tipoInf,dataInf,avisos);
+    if(usouLeitorProprio) await classificarAmbiguos(rasc.itens,status);
+    mostrarRevisao(rasc);
   }catch(e){S.busy=null;S.erro=(e&&e.code==='pdf')?'Não consegui abrir esse PDF. Tente tirar uma foto das páginas.':erroIA(e);render();}
 }
 
-function abrirRevisao(respostas,tipoInf,dataInf,avisos){
+function montarRascunho(respostas,tipoInf,dataInf,avisos){
   const pega=(campo)=>{for(const r of respostas){if(r[campo])return String(r[campo]);}return '';};
   const vistos=new Set(), itens=[];
   for(const r of respostas) for(const bruto of (r.itens||[])){
@@ -526,9 +808,11 @@ function abrirRevisao(respostas,tipoInf,dataInf,avisos){
     const chave=normNome(i.nome)+'|'+i.valor; if(vistos.has(chave)) continue; vistos.add(chave); itens.push(i);
   }
   const obs=respostas.map(r=>r.observacao).filter(Boolean).slice(0,2).join(' ');
-  S.dup=null; S.rascunho={id:uidGen(),tipo:pega('tipo')||tipoInf||'outro',data:pega('data')||dataInf||hoje(),laboratorio:pega('laboratorio'),observacao:obs,itens,avisos};
-  S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0);
+  return {id:uidGen(),tipo:pega('tipo')||tipoInf||'outro',data:pega('data')||dataInf||hoje(),laboratorio:pega('laboratorio'),observacao:obs,itens,avisos};
 }
+function mostrarRevisao(rasc){ S.dup=null; S.rascunho=rasc; S.busy=null; S.sub='revisar'; render(); window.scrollTo(0,0); }
+function abrirRevisao(respostas,tipoInf,dataInf,avisos){ mostrarRevisao(montarRascunho(respostas,tipoInf,dataInf,avisos)); }
+
 
 let chatCtl=null;
 async function perguntar(texto){
@@ -749,13 +1033,18 @@ const GRUPOS=[
 ];
 const grupoDe=(e)=>GRUPOS.some(g=>g.id===e.tipo)?e.tipo:'outro';
 
+const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const mesAno=(iso)=>{const p=String(iso||'').split('-');return p.length>=2?MES[+p[1]-1]+'/'+p[0].slice(2):h(iso);};
+const antes=(i)=>Array.isArray(i.anteriores)&&i.anteriores.length?`<span class="small" style="color:var(--faint)">Antes: ${i.anteriores.slice(0,3).map(a=>h(a.valor)+' ('+mesAno(a.data)+')').join(' · ')}</span>`:'';
+const refCurta=(r)=>{ r=String(r||''); return r.length>90?r.slice(0,88).replace(/[;,\s]+\S*$/,'')+'…':r; };
+
 function cartaoExame(e,maisRecente){
   const alt=(e.itens||[]).filter(i=>i.situacao==='alto'||i.situacao==='baixo').length;
   return `<div class="card stack-s" style="padding:14px 16px">
     <div class="row between" style="align-items:flex-start"><div class="stack-s" style="gap:2px;min-width:0"><h3>${fmtData(e.data)}${maisRecente?' <span class="pill info" style="margin-left:4px;vertical-align:1px">Mais recente</span>':''}</h3>${e.laboratorio?`<span class="small muted">${h(e.laboratorio)}</span>`:''}</div>${alt?`<span class="pill warn">${alt} fora da faixa</span>`:'<span class="pill ok">Tudo na faixa</span>'}</div>
     ${e.observacao?`<p class="small muted">${h(e.observacao)}</p>`:''}
     <details${S.confirmDel===e.id?' open':''}><summary class="row between" style="cursor:pointer;list-style:none;min-height:44px"><span class="small" style="font-weight:700;color:var(--accent-ink)">Ver ${(e.itens||[]).length} valores</span>${ICON.arrow}</summary>
-    <div class="list" style="background:var(--surface-2)">${(e.itens||[]).map(i=>`<div class="li"><span class="txt"><strong style="font-size:15px">${h(i.nome)}</strong><span class="small muted">${h(i.valor)} ${h(i.unidade)}${i.referencia?' · ref. '+h(i.referencia):''}</span></span>${situ(i.situacao)}</div>`).join('')}
+    <div class="list" style="background:var(--surface-2)">${(e.itens||[]).map(i=>`<div class="li"><span class="txt"><strong style="font-size:15px">${h(i.nome)}</strong><span class="small muted">${h(i.valor)} ${h(i.unidade)}${i.referencia?' · ref. '+h(refCurta(refDaPessoa(i.referencia,S.perfil))):''}</span>${antes(i)}</span>${situ(i.situacao)}</div>`).join('')}
     <div class="li">${S.confirmDel===e.id?`<span class="small">Apagar este exame?</span><span class="row"><button class="btn plain" style="min-height:44px" data-act="cancelDel">Não</button><button class="btn danger" style="min-height:44px" data-act="delExame" data-id="${h(e.id)}">Apagar</button></span>`:`<span></span><button class="btn plain" style="min-height:44px" data-act="askDel" data-id="${h(e.id)}">Apagar exame</button>`}</div></div>
     </details></div>`;
 }
@@ -810,8 +1099,8 @@ function telaRevisar(){
   <form id="fRev" class="stack">
     <div class="grid2"><label class="f">Tipo<select id="rTipo">${Object.entries(TIPOS).map(([k,t])=>`<option value="${k}"${r.tipo===k?' selected':''}>${t}</option>`).join('')}</select></label>
     <label class="f">Data<input id="rData" type="date" value="${h(r.data)}"></label></div>
-    <div class="list">${r.itens.map((i,ix)=>`<div class="li" style="flex-wrap:wrap"><span class="txt" style="flex:1 1 140px"><strong>${h(i.nome)}</strong><span class="small muted">${i.referencia?'ref. '+h(i.referencia):'sem referência'}</span></span>
-      <span class="row" style="flex:1 1 170px"><label class="sr" for="rv${ix}">Valor de ${h(i.nome)}</label><input id="rv${ix}" data-ix="${ix}" class="rv" value="${h(i.valor)}" style="flex:1;min-width:0"><span class="small muted" style="min-width:44px">${h(i.unidade)}</span><button type="button" class="iconbtn" data-act="rmItem" data-ix="${ix}" aria-label="Remover ${h(i.nome)}">×</button></span></div>`).join('')||'<div class="li"><span class="small muted">Nenhum valor encontrado.</span></div>'}</div>
+    <div class="list">${r.itens.map((i,ix)=>`<div class="li" style="flex-wrap:wrap"><span class="txt" style="flex:1 1 140px"><strong>${h(i.nome)}</strong><span class="small muted">${i.referencia?'ref. '+h(refCurta(refDaPessoa(i.referencia,S.perfil))):'sem referência'}</span>${antes(i)}</span>
+      <span class="row" style="flex:0 1 auto;margin-left:auto"><label class="sr" for="rv${ix}">Valor de ${h(i.nome)}</label><input id="rv${ix}" data-ix="${ix}" class="rv" value="${h(i.valor)}" style="flex:0 0 108px;min-width:0;text-align:right;font-variant-numeric:tabular-nums"><span class="small muted" style="min-width:44px">${h(i.unidade)}</span><button type="button" class="iconbtn" data-act="rmItem" data-ix="${ix}" aria-label="Remover ${h(i.nome)}">×</button></span></div>`).join('')||'<div class="li"><span class="small muted">Nenhum valor encontrado.</span></div>'}</div>
     ${S.dup?painelRepetido():`<div class="grid2"><button type="button" class="btn plain" data-act="voltar">Descartar</button><button class="btn" type="submit"${r.itens.length?'':' disabled'}>Salvar exame</button></div>`}
   </form>`;
 }
