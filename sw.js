@@ -1,5 +1,5 @@
 // Guarda o app para abrir sem internet. As chamadas de IA sempre vão para a rede.
-const CACHE = 'treino-v12';
+const CACHE = 'treino-v13';
 const BASE = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));

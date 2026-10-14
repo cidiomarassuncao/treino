@@ -401,7 +401,15 @@ function erroIA(e){
 /* ---------- relógio: Conexão Saúde (só no app Android) ---------- */
 const NATIVO = /TreinoNutricaoApp/.test(navigator.userAgent) || !!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 let _health=null;
-function plugSaude(){ if(_health) return _health; const C=window.Capacitor; if(C&&typeof C.registerPlugin==='function'){ try{ _health=C.registerPlugin('Health'); }catch(e){ _health=null; } } return _health; }
+// a página vem do GitHub Pages, sem a biblioteca do Capacitor: chama o plugin direto pela ponte nativa
+const METODOS_SAUDE=['isAvailable','requestAuthorization','checkAuthorization','readSamples','queryAggregated','queryWorkouts','openHealthConnectSettings','showPrivacyPolicy'];
+function plugSaude(){
+  if(_health) return _health; const C=window.Capacitor; if(!C) return null;
+  if(typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('Health'))){
+    _health={}; for(const m of METODOS_SAUDE) _health[m]=(op)=>C.nativePromise('Health',m,op||{});
+  } else if(typeof C.registerPlugin==='function'){ try{ _health=C.registerPlugin('Health'); }catch(e){ _health=null; } }
+  return _health;
+}
 const TIPOS_SAUDE=['sleep','heartRate','restingHeartRate','heartRateVariability','steps','weight','workouts'];
 const diaLocal=(iso)=>{ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const minutos=(a,b)=>Math.max(0,(new Date(b)-new Date(a))/60000);
@@ -424,7 +432,7 @@ function noitesDeSono(amostras){
 
 async function sincronizarSaude(manual){
   const H=plugSaude();
-  if(!H){ if(manual) toast('A leitura do relógio só funciona no app Android.'); return; }
+  if(!H){ if(manual) toast(window.Capacitor?'O app não encontrou o módulo do Conexão Saúde. Instale a versão mais recente do APK.':'A leitura do relógio só funciona no app Android.'); return; }
   if(S.saudeBusy) return; S.saudeBusy=true; if(manual) render();
   const tentar=async(f)=>{ try{ return await f(); }catch(e){ return null; } };
   try{
