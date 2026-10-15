@@ -92,6 +92,9 @@ textarea{min-height:110px;resize:vertical}
 .chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
 .tabs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
 .tabs .chip{font-family:var(--display);font-stretch:75%;font-size:22px;font-weight:800;min-height:52px;border-radius:16px}
+.exm{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
+.exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.exm-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exm-imgs img{width:100%;height:auto;border-radius:12px;background:#fff;display:block}
 .ex{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:18px}
 .ex .exn{flex:none;width:34px;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:22px;color:var(--faint);text-align:center;font-variant-numeric:tabular-nums}
 .ex.feito .exn{color:var(--accent)}
@@ -444,36 +447,41 @@ function plugSaude(){
 }
 const TIPOS_SAUDE=['sleep','heartRate','restingHeartRate','heartRateVariability','steps','weight','workouts'];
 const diaLocal=(iso)=>{ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const hhmm=(iso)=>{ const d=new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
 const minutos=(a,b)=>Math.max(0,(new Date(b)-new Date(a))/60000);
 
 // junta as amostras de sono por noite (data do despertar): total dormido, profundo e REM
 const ESTADO_SONO={1:'awake',2:'sleeping',3:'outofbed',4:'light',5:'deep',6:'rem',7:'awakeinbed'};
 function noitesDeSono(amostras){
   // O plugin pode devolver varios registros com as mesmas etapas (ou fontes sobrepostas).
-  // Por isso juntamos os intervalos de cada tipo (dormindo, profundo, REM) sem contar o mesmo minuto duas vezes.
+  // Por isso juntamos os intervalos de cada tipo sem contar o mesmo minuto duas vezes.
+  // min = tempo dormido; cama = sessão inteira (como o app do relógio mostra); acordado = interrupções.
   const ehAcordado=(e)=>/^(awake|inbed|outofbed|awakeinbed|out_of_bed|awake_in_bed)$/.test(e);
-  const ivs=[]; // {a,b,e}
+  const ivs=[]; // {a,b,e,ac}
   for(const s of (amostras||[])){
     const lista=(Array.isArray(s.stages)&&s.stages.length)?s.stages.map(g=>({a:g.startDate,b:g.endDate,e:g.stage})):[{a:s.startDate,b:s.endDate,e:s.sleepState||'asleep'}];
     for(const g of lista){
       const e=ESTADO_SONO[g.e]||String(g.e||'').toLowerCase();
       const a=new Date(g.a).getTime(), b=new Date(g.b).getTime();
-      if(!isFinite(a)||!isFinite(b)||b<=a||ehAcordado(e)) continue;
-      ivs.push({a,b,e});
+      if(!isFinite(a)||!isFinite(b)||b<=a) continue;
+      ivs.push({a,b,e,ac:ehAcordado(e)});
     }
   }
   const uniao=(lista)=>{ const o=lista.map(x=>[x.a,x.b]).sort((x,y)=>x[0]-y[0]); const r=[]; for(const [a,b] of o){ const u=r[r.length-1]; if(u&&a<=u[1]) u[1]=Math.max(u[1],b); else r.push([a,b]); } return r; };
   const total=(u)=>u.reduce((t,[a,b])=>t+(b-a)/60000,0);
-  // agrupa por noite (data do despertar de cada bloco contínuo)
-  const blocos=uniao(ivs); const noites={};
-  for(const [a,b] of blocos){
-    const k=diaLocal(new Date(b).toISOString());
-    const n=noites[k]||(noites[k]={min:0,profundo:0,rem:0,inicio:new Date(a).toISOString(),fim:new Date(b).toISOString()});
-    const dentro=(x)=>ivs.filter(i=>i.e===x&&i.a<b&&i.b>a).map(i=>({a:Math.max(i.a,a),b:Math.min(i.b,b)}));
-    n.min+=(b-a)/60000; n.profundo+=total(uniao(dentro('deep'))); n.rem+=total(uniao(dentro('rem')));
-    if(new Date(a).toISOString()<n.inicio) n.inicio=new Date(a).toISOString(); if(new Date(b).toISOString()>n.fim) n.fim=new Date(b).toISOString();
+  const iso=(t)=>new Date(t).toISOString();
+  const noites={};
+  for(const [a,b] of uniao(ivs)){ // cada bloco contínuo (dormindo + acordado) é uma sessão
+    const doBloco=(f)=>ivs.filter(i=>f(i)&&i.a<b&&i.b>a).map(i=>({a:Math.max(i.a,a),b:Math.min(i.b,b)}));
+    const dorm=total(uniao(doBloco(i=>!i.ac)));
+    if(dorm<=0) continue;
+    const k=diaLocal(iso(b));
+    const n=noites[k]||(noites[k]={min:0,cama:0,profundo:0,rem:0,inicio:iso(a),fim:iso(b)});
+    n.min+=dorm; n.cama+=(b-a)/60000;
+    n.profundo+=total(uniao(doBloco(i=>i.e==='deep'))); n.rem+=total(uniao(doBloco(i=>i.e==='rem')));
+    if(iso(a)<n.inicio) n.inicio=iso(a); if(iso(b)>n.fim) n.fim=iso(b);
   }
-  for(const k in noites){ const n=noites[k]; n.min=Math.round(n.min); n.profundo=Math.round(n.profundo); n.rem=Math.round(n.rem); if(n.min>16*60) delete noites[k]; }
+  for(const k in noites){ const n=noites[k]; n.min=Math.round(n.min); n.cama=Math.max(n.min,Math.round(n.cama)); n.profundo=Math.round(n.profundo); n.rem=Math.round(n.rem); if(n.cama>16*60) delete noites[k]; }
   return noites;
 }
 
@@ -496,11 +504,11 @@ async function sincronizarSaude(manual){
     // 1ª leitura (ou leitura antiga): 14 dias. Depois, só os 2 últimos dias, somados ao que já foi lido.
     const recente=ant.sincronizado&&(Date.now()-new Date(ant.sincronizado).getTime()<3*864e5)&&ant.dias;
     const pend=new Set(ant.pendentes||[]);
-    const sonoReset=ant.vSono!==2; // versão 17: sono antigo vinha somado várias vezes, relê os 14 dias uma vez
+    const sonoReset=ant.vSono!==3; // versão 17: sono antigo vinha somado várias vezes, relê os 14 dias uma vez
     const desde=(t)=>(recente&&!pend.has(t)&&!(t==='sleep'&&sonoReset))?meiaNoite(1):meiaNoite(13);
     const corte=diaLocal(meiaNoite(13));
     const dias={}; for(const k in (ant.dias||{})) if(k>=corte) dias[k]={...ant.dias[k]};
-    if(sonoReset) for(const k in dias){ delete dias[k].sono; delete dias[k].sonoProfundo; delete dias[k].sonoRem; }
+    if(sonoReset) for(const k in dias){ ['sono','sonoCama','sonoIni','sonoFim','sonoProfundo','sonoRem'].forEach(c=>delete dias[k][c]); }
     const D=(k)=>dias[k]||(dias[k]={});
     const limpa=(campos,ini)=>{ const k0=diaLocal(ini); for(const k in dias) if(k>=k0) campos.forEach(c=>delete dias[k][c]); };
     const vazio={...(ant.vazio||{})}; // tipos que o relógio não grava: consulta só 1 vez por semana
@@ -519,8 +527,8 @@ async function sincronizarSaude(manual){
       const ini=desde('sleep'); const iniS=new Date(ini); iniS.setDate(iniS.getDate()-1);
       const am=await ler('sono','sleep',()=>H.readSamples({startDate:iniS.toISOString(),endDate:fim.toISOString(),dataType:'sleep',limit:1000}));
       if(am){ if(am[0]){ const x=am[0]; diag.amostraSono={campos:Object.keys(x).join(','),estado:x.sleepState||'',etapas:Array.isArray(x.stages)?x.stages.length:0,valor:x.value}; }
-        limpa(['sono','sonoProfundo','sonoRem'],ini);
-        const noites=noitesDeSono(am); for(const k in noites){ if(k>=corte&&noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); } }
+        limpa(['sono','sonoCama','sonoIni','sonoFim','sonoProfundo','sonoRem'],ini);
+        const noites=noitesDeSono(am); for(const k in noites){ if(k>=corte&&noites[k].min>=60) Object.assign(D(k),{sono:noites[k].min,sonoCama:noites[k].cama,sonoIni:noites[k].inicio,sonoFim:noites[k].fim,sonoProfundo:noites[k].profundo,sonoRem:noites[k].rem}); } }
     }
     if(ok.has('steps')){ const am=await ler('passos','steps',()=>H.queryAggregated({...per('steps'),dataType:'steps',bucket:'day',aggregation:'sum'}));
       if(am) am.forEach(x=>{ if(isFinite(+x.value)) D(diaLocal(x.startDate)).passos=Math.round(+x.value); }); 
@@ -560,7 +568,7 @@ async function sincronizarSaude(manual){
     // sem FC de repouso gravada pelo relógio: usa a menor frequência do dia como estimativa
     for(const k in dias){ const d=dias[k]; if((!d.fcRepouso||d.fcRepousoEst)&&d.fcMin){ d.fcRepouso=d.fcMin; d.fcRepousoEst=true; } }
     diag.janela=recente?'2 dias (somados aos anteriores)':'14 dias';
-    S.saude={vSono:(ok.has('sleep')&&!pendentes.includes('sleep'))?2:ant.vSono,sincronizado:fim.toISOString(),dias,peso,pesoLido,treinos,permitidos:[...ok],diag,vazio,pendentes:[...new Set(pendentes)],
+    S.saude={vSono:(ok.has('sleep')&&!pendentes.includes('sleep'))?3:ant.vSono,sincronizado:fim.toISOString(),dias,peso,pesoLido,treinos,permitidos:[...ok],diag,vazio,pendentes:[...new Set(pendentes)],
       pausaAte:diag.limite?new Date(Date.now()+15*60e3).toISOString():null};
     await save('saude',S.saude);
     if(manual){
@@ -578,7 +586,7 @@ function resumoSaude(){
   const ult7=chaves.filter(k=>k>=diaLocal(Date.now()-7*864e5));
   const media=(campo,lista)=>{ const v=(lista||ult7).map(k=>sd.dias[k][campo]).filter(x=>isFinite(x)&&x>0); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null; };
   const noite=chaves.find(k=>sd.dias[k].sono);
-  const r={ultimaNoite:noite?{data:noite,minutos:sd.dias[noite].sono,profundo:sd.dias[noite].sonoProfundo||0,rem:sd.dias[noite].sonoRem||0}:null,
+  const r={ultimaNoite:noite?{data:noite,minutos:sd.dias[noite].sono,cama:sd.dias[noite].sonoCama||sd.dias[noite].sono,ini:sd.dias[noite].sonoIni||null,fim:sd.dias[noite].sonoFim||null,profundo:sd.dias[noite].sonoProfundo||0,rem:sd.dias[noite].sonoRem||0}:null,
     sonoMedioMin:media('sono'), fcRepousoHoje:(sd.dias[hojeK]||{}).fcRepouso||null, fcRepousoEstimada:Object.values(sd.dias).some(d=>d.fcRepousoEst), fcMediaHoje:(sd.dias[hojeK]||{}).fcMedia||null, fcRepousoMedia:media('fcRepouso'), hrvMedia:media('hrv'), passosHoje:(sd.dias[hojeK]||{}).passos||null, passosMedia:media('passos'),
     treinos7d:(sd.treinos||[]).filter(t=>t.data>=diaLocal(Date.now()-7*864e5)).length, peso:sd.peso, atualizado:sd.sincronizado};
   return (r.ultimaNoite||r.fcRepousoMedia||r.passosMedia||r.treinos7d)?r:null;
@@ -623,17 +631,17 @@ function cartaoRelogio(){
   // barras de sono dos últimos 7 dias
   const dias=[]; for(let i=6;i>=0;i--){ const k=diaLocal(Date.now()-i*864e5); dias.push({k,min:(sd.dias[k]||{}).sono||0,lbl:['D','S','T','Q','Q','S','S'][new Date(k+'T12:00').getDay()]}); }
   const maxMin=Math.max(480,...dias.map(d=>d.min));
-  const barras=`<div role="img" aria-label="Sono dos últimos 7 dias" style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:74px">${dias.map(d=>`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><div title="${hm(d.min)}" style="width:100%;max-width:22px;border-radius:6px;background:${d.min&&d.min<360?'var(--warn-ink)':'var(--accent)'};opacity:${d.min?1:.25};height:${d.min?Math.max(6,Math.round(d.min/maxMin*52)):4}px"></div><span style="font-size:11px;color:var(--muted)">${d.lbl}</span></div>`).join('')}</div>`;
+  const barras=`<div role="img" aria-label="Sono dos últimos 7 dias" style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:92px">${dias.map(d=>`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><span style="font-size:10px;color:var(--muted);white-space:nowrap">${d.min?hm(d.min):''}</span><div title="${hm(d.min)}" style="width:100%;max-width:22px;border-radius:6px;background:${d.min&&d.min<360?'var(--warn-ink)':'var(--accent)'};opacity:${d.min?1:.25};height:${d.min?Math.max(6,Math.round(d.min/maxMin*50)):4}px"></div><span style="font-size:11px;color:var(--muted)">${d.lbl}</span></div>`).join('')}</div>`;
   const n=r.ultimaNoite;
   return `<div class="card stack"><div class="row between"><div class="stack-s" style="gap:0"><h3>Relógio</h3><span class="small muted">Atualizado ${h(quando)}</span></div>${botao}</div>
     <div class="grid3">
-      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Sono</span><span class="num" style="font-size:26px">${n?hm(n.minutos):'—'}</span><span class="small muted">média ${hm(r.sonoMedioMin)}</span></div>
+      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Sono</span><span class="num" style="font-size:26px">${n?hm(n.minutos):'—'}</span><span class="small muted">${n&&n.cama>n.minutos?'dormido · '+hm(n.cama)+' na cama':'dormido'}</span><span class="small muted">média ${hm(r.sonoMedioMin)}</span></div>
       <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">FC repouso</span><span class="num" style="font-size:26px">${r.fcRepousoHoje||r.fcRepousoMedia||'—'}<small> bpm</small></span><span class="small muted">${r.fcRepousoMedia?(r.fcRepousoEstimada?'mín. do dia · média ':'média ')+r.fcRepousoMedia:'sem dados'}</span></div>
       <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Passos</span><span class="num" style="font-size:26px">${r.passosHoje!=null?num(r.passosHoje):'—'}</span><span class="small muted">${r.passosMedia?'média '+num(r.passosMedia):'hoje'}</span></div>
     </div>
     ${barras}
     ${diagSaude(sd)}
-    ${n&&(n.profundo||n.rem)?`<p class="small muted">Última noite: ${hm(n.profundo)} de sono profundo e ${hm(n.rem)} de REM${r.hrvMedia?' · HRV média '+r.hrvMedia+' ms':''}.</p>`:(r.hrvMedia?`<p class="small muted">HRV média ${r.hrvMedia} ms.</p>`:'')}
+    ${n?`<p class="small muted">Última noite${n.ini&&n.fim?' ('+hhmm(n.ini)+' às '+hhmm(n.fim)+')':''}: dormido ${hm(n.minutos)}${n.cama>n.minutos?', mais '+hm(n.cama-n.minutos)+' acordado':''}. Profundo ${hm(n.profundo)} · REM ${hm(n.rem)} · leve ${hm(Math.max(0,n.minutos-n.profundo-n.rem))}${r.hrvMedia?' · HRV média '+r.hrvMedia+' ms':''}.</p>`:(r.hrvMedia?`<p class="small muted">HRV média ${r.hrvMedia} ms.</p>`:'')}
   </div>`;
 }
 
@@ -664,7 +672,7 @@ ${contexto()}
 Monte o plano desta pessoa. Responda SOMENTE com um objeto JSON neste formato:
 {"resumo":"2 a 3 frases sobre o estado atual e o caminho","alertas":[{"titulo":"curto","texto":"1 frase","nivel":"atencao|medico"}],
 "metas":{"peso_kg":numero ou null,"gordura_pct":numero ou null,"prazo_semanas":numero},
-"treino":{"divisao":"ex.: ABC","semanas":numero,"orientacao":"1 a 2 frases sobre carga e descanso","dias":[{"id":"A","titulo":"Peito e tríceps","duracao_min":numero,"exercicios":[{"nome":"","series":"4","reps":"8 a 10","descanso":"90 s","dica":"opcional, curta","alternativas":["exercício equivalente 1","exercício equivalente 2"]}]}],"cardio":"recomendação de aeróbico semanal"},
+"treino":{"divisao":"ex.: ABC","semanas":numero,"orientacao":"1 a 2 frases sobre carga e descanso","dias":[{"id":"A","titulo":"Peito e tríceps","duracao_min":numero,"exercicios":[{"nome":"","en":"nome do exercício em inglês, como em bancos de exercícios","series":"4","reps":"8 a 10","descanso":"90 s","dica":"opcional, curta","alternativas":["exercício equivalente 1","exercício equivalente 2"]}]}],"cardio":"recomendação de aeróbico semanal"},
 "dieta":{"calorias":numero,"proteina_g":numero,"carbo_g":numero,"gordura_g":numero,"agua_l":numero,"refeicoes":[{"nome":"Café da manhã","horario":"07:00","itens":["2 ovos mexidos","..."],"trocas":["2 ovos → 1 pote de iogurte natural com 2 colheres de aveia","..."]}],"dicas":["..."]},
 "medico":["o que levar para conversar com o médico, se houver"]}
 Exatamente ${dias} dias de treino (ids A, B, C...), 5 a 7 exercícios por dia, cada um com 1 a 2 alternativas que trabalham o mesmo músculo (para aparelho ocupado ou desconforto), duração próxima de ${h(S.perfil.minutos||60)} minutos. 4 a 6 refeições, cada uma com 2 a 3 trocas equivalentes em calorias e proteína. Se não houver exames, baseie-se no perfil e diga no resumo que exames deixariam o plano mais preciso.`;
@@ -1560,7 +1568,7 @@ function telaTreino(){
   o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}">${h(x.id)}</button>`).join('')}</div>`;
   o+=`<div class="row between" style="align-items:flex-end"><div class="stack-s" style="gap:2px"><h2>Treino ${h(d.id)} · ${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
   if(t.orientacao) o+=`<p class="status ok">${h(t.orientacao)}</p>`;
-  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div>`;}).join('')}</div>`;
+  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span><span class="small" style="color:var(--accent-ink)">Ver como fazer</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div>`;}).join('')}</div>`;
   const jaHoje=(S.registro.treinos||[]).some(x=>x.data===hoje());
   o+=jaHoje?`<p class="status ok row">${ICON.check}<span>Treino de hoje registrado. Bom trabalho.</span></p>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
   if(t.cardio) o+=`<div class="card stack-s"><h3>Aeróbico</h3><p class="small">${h(t.cardio)}</p></div>`;
@@ -1633,6 +1641,89 @@ function toast(msg){let el=document.getElementById('toast');if(!el){el=document.
   el.textContent=msg;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{el.hidden=true;},3500);}
 
 /* ---------- eventos ---------- */
+// ===== Como fazer o exercício: imagem + links (Free Exercise DB, domínio público) =====
+const EX_JSON=['https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/dist/exercises.json','https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json'];
+const EX_IMG=['https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/','https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/'];
+let EX_DB=null, EX_DB_P=null, EX_FOCO=null;
+const semAcento=(t)=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+// português → termos em inglês (frases mais longas primeiro)
+const EX_PT=[['agachamento bulgaro','bulgarian split squat'],['agachamento sumo','sumo squat'],['agachamento hack','hack squat'],['agachamento frontal','front squat'],['agachamento livre','barbell squat'],['agachamento','squat'],['levantamento terra','deadlift'],['stiff','stiff-legged deadlift'],['romeno','romanian deadlift'],['terra','deadlift'],
+['supino','bench press'],['inclinado','incline'],['inclinada','incline'],['declinado','decline'],['halteres','dumbbell'],['halter','dumbbell'],['barra fixa','pullup'],['barra ez','ez-bar'],['barra w','ez-bar'],['barra','barbell'],['polia alta','cable'],['polia baixa','cable'],['polia','cable'],['cabo','cable'],
+['crucifixo inverso','reverse flyes rear delt'],['crucifixo','flyes'],['voador','butterfly'],['peck deck','butterfly'],['pec deck','butterfly'],['crossover','cable crossover'],['flexao de bracos','pushup'],['flexao','pushup'],['paralelas','dips'],['mergulho','dips'],
+['triceps testa','skullcrusher'],['triceps frances','triceps extension overhead'],['triceps corda','triceps pushdown rope'],['triceps pulley','triceps pushdown'],['triceps coice','triceps kickback'],['triceps','triceps'],['biceps','biceps'],
+['rosca direta','barbell curl'],['rosca alternada','alternate dumbbell curl'],['rosca martelo','hammer curl'],['martelo','hammer'],['rosca scott','preacher curl'],['scott','preacher'],['rosca concentrada','concentration curl'],['rosca','curl'],
+['puxada','lat pulldown'],['pulley','pulldown'],['frente','front'],['atras','behind neck'],['aberta','wide grip'],['fechada','close grip'],['supinada','underhand'],
+['remada curvada','bent over row'],['remada cavalinho','t-bar row'],['remada baixa','seated cable row'],['remada unilateral','one-arm dumbbell row'],['serrote','one-arm dumbbell row'],['remada','row'],
+['leg press','leg press'],['cadeira extensora','leg extensions'],['extensora','leg extensions'],['mesa flexora','lying leg curls'],['cadeira flexora','seated leg curl'],['flexora','leg curl'],['cadeira abdutora','thigh abductor'],['abdutora','thigh abductor'],['cadeira adutora','thigh adductor'],['adutora','thigh adductor'],
+['panturrilha','calf raise'],['gemeos','calf raise'],['elevacao pelvica','hip thrust'],['ponte de gluteo','glute bridge'],['gluteo','glute'],['afundo','lunge'],['passada','lunge'],['avanco','lunge'],
+['desenvolvimento','shoulder press'],['elevacao lateral','side lateral raise'],['elevacao frontal','front raise'],['encolhimento','shrug'],['arnold','arnold press'],['pullover','pullover'],['face pull','face pull'],
+['abdominal infra','leg raise'],['elevacao de pernas','leg raise'],['abdominal','crunches'],['prancha','plank'],['rotacao russa','russian twist'],
+['sentado','seated'],['sentada','seated'],['em pe','standing'],['deitado','lying'],['deitada','lying'],['unilateral','one-arm'],['maquina','machine'],['smith','smith machine'],['esteira','treadmill'],['bicicleta','bike'],['eliptico','elliptical'],['coice','kickback']];
+EX_PT.sort((a,b)=>b[0].length-a[0].length);
+const EX_STOP=new Set(['de','da','do','das','dos','na','nas','no','nos','em','medium','attachment','version','pela','pelas','com','a','o','e','para','pela','pelo','the','with','and','reto','reta','livre']);
+const exStem=(w)=>w.length>3&&w.endsWith('s')&&!w.endsWith('ss')?w.slice(0,-1):w;
+function exTokens(txt){ return new Set(semAcento(txt).split(/[^a-z]+/).filter(w=>w&&!EX_STOP.has(w)).map(exStem)); }
+function exParaIngles(nome){
+  let t=' '+semAcento(nome).replace(/[()\-\/,]/g,' ')+' '; const out=[];
+  for(const [pt,en] of EX_PT){ const r=new RegExp('(^|\\s)'+pt.replace(/ /g,'\\s+')+'(?=\\s|$)','g'); if(r.test(t)){ out.push(en); t=t.replace(r,' '); } }
+  return out.join(' ')+' '+t;
+}
+function exMelhor(texto,db){
+  const q=exTokens(texto); if(!q.size) return null; let melhor=null,pts=0;
+  const equip=['dumbbell','barbell','cable','machine'].filter(x=>q.has(x));
+  for(const e of db){
+    const n=e._t||(e._t=exTokens(e.name)); let i=0; for(const w of q) if(n.has(w)) i++;
+    if(!i) continue; let sc=2*i/(q.size+n.size);
+    if(equip.length&&equip.includes(String(e.equipment||'').split(' ')[0])) sc+=.08;
+    for(const v of ['incline','decline']) if(n.has(v)&&!q.has(v)) sc-=.3; // não trocar supino reto por inclinado/declinado
+    if(sc>pts||(sc===pts&&melhor&&e.name.length<melhor.name.length)){ pts=sc; melhor=e; }
+  }
+  return pts>=.45?melhor:null;
+}
+function carregarExDB(){
+  if(EX_DB) return Promise.resolve(EX_DB);
+  if(!EX_DB_P) EX_DB_P=(async()=>{ for(const u of EX_JSON){ try{ const r=await fetch(u); if(!r.ok) continue; const j=await r.json(); if(Array.isArray(j)&&j.length){ EX_DB=j; return j; } }catch(e){} } EX_DB_P=null; return null; })();
+  return EX_DB_P;
+}
+const exMapaGet=()=>{ try{ return JSON.parse(localStorage.getItem('tn:exmap')||'{}'); }catch(e){ return {}; } };
+const exMapaSet=(k,v)=>{ try{ const m=exMapaGet(); m[k]=v; localStorage.setItem('tn:exmap',JSON.stringify(m)); }catch(e){} };
+async function acharExercicio(e){
+  const db=await carregarExDB(); if(!db) return {erro:'rede'};
+  const chave=semAcento(e.nome); const salvo=exMapaGet()[chave];
+  if(salvo){ const x=db.find(d=>d.id===salvo); if(x) return {ex:x}; }
+  let x=(e.en&&exMelhor(e.en,db))||exMelhor(exParaIngles(e.nome),db);
+  if(!x&&iaPronta()&&navigator.onLine){ // sem correspondência: pede o nome em inglês à IA
+    try{ const r=await ia.json('Qual o nome em inglês do exercício "'+e.nome+'", como aparece em bancos de exercícios (ex.: "Barbell Bench Press", "Lat Pulldown")? Responda {"en":"nome em inglês"}.',{tarefa:'chat'}); if(r&&r.en) x=exMelhor(String(r.en),db); }catch(err){}
+  }
+  if(x) exMapaSet(chave,x.id);
+  return {ex:x||null};
+}
+function fecharExercicio(){ const m=document.getElementById('exModal'); if(!m) return; m.remove(); document.body.style.overflow=''; if(EX_FOCO&&EX_FOCO.focus) EX_FOCO.focus(); EX_FOCO=null; }
+async function abrirExercicio(e,foco){
+  fecharExercicio(); EX_FOCO=foco||null;
+  const nome=e.nome||'Exercício', alts=(e.alternativas||[]).filter(Boolean);
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  const info=[(e.series||e.reps)?h(e.series||'')+' × '+h(e.reps||'')+(e.descanso?' · descanso '+h(e.descanso):''):'',].filter(Boolean).join('');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><h2 id="exmTit" style="min-width:0">${h(nome)}</h2><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
+    ${info?`<span class="small muted">${info}</span>`:''}${e.dica?`<p class="small">${h(e.dica)}</p>`:''}
+    <div id="exmImg" class="small muted" aria-live="polite">Procurando a imagem…</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent('como fazer '+nome)}">Ver vídeo</a><a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(nome+' exercício')}">Mais imagens</a></div>
+    ${alts.length?`<div class="stack-s"><span class="small muted" style="font-weight:600">Alternativas (toque para ver)</span><div class="chips">${alts.map(a=>`<button class="chip" data-act="exVer" data-nome="${h(a)}">${h(a)}</button>`).join('')}</div></div>`:''}</div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden'; const x=document.getElementById('exmX'); if(x) x.focus();
+  const r=await acharExercicio(e); const box=document.getElementById('exmImg'); if(!box||!document.getElementById('exModal')) return;
+  if(r.ex&&r.ex.images&&r.ex.images.length){
+    const fr=r.ex.images.slice(0,2);
+    box.className=''; box.innerHTML=`<div class="exm-imgs">${fr.map((p,i)=>`<figure style="margin:0"><img src="${EX_IMG[0]+p}" data-alt="${EX_IMG[1]+p}" alt="${i?'Posição final':'Posição inicial'} de ${h(nome)}" loading="lazy" onerror="if(this.dataset.alt&&this.src!==this.dataset.alt){this.src=this.dataset.alt}else{this.closest('figure').style.display='none'}"><figcaption class="small muted" style="text-align:center">${i?'Final':'Início'}</figcaption></figure>`).join('')}</div><p class="small muted" style="margin-top:6px">Imagem de referência: ${h(r.ex.name)} (Free Exercise DB, domínio público). Confira se é o mesmo movimento do seu treino.</p>`;
+  } else box.textContent=r.erro==='rede'?'Não consegui baixar as imagens (precisa de internet). Use os botões abaixo.':'Não achei uma imagem para este exercício. Use os botões abaixo.';
+}
+function exercicioPorChave(k){ const ds=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[]; for(const d of ds){ const ex=d.exercicios||[]; for(let i=0;i<ex.length;i++) if(d.id+i===k) return ex[i]; } return null; }
+document.addEventListener('keydown',(ev)=>{
+  if(ev.key==='Escape'&&document.getElementById('exModal')){ fecharExercicio(); return; }
+  if(ev.key==='Tab'){ const m=document.getElementById('exModal'); if(m){ const f=[...m.querySelectorAll('button,a[href]')]; if(f.length){ const a=f[0],z=f[f.length-1]; if(ev.shiftKey&&document.activeElement===a){ ev.preventDefault(); z.focus(); } else if(!ev.shiftKey&&document.activeElement===z){ ev.preventDefault(); a.focus(); } } } }
+  const t=ev.target.closest&&ev.target.closest('[role="button"][data-act]'); if(t&&(ev.key==='Enter'||ev.key===' ')){ ev.preventDefault(); t.click(); }
+});
+
 document.addEventListener('click', async (ev)=>{
   const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
@@ -1645,6 +1736,8 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='chat'){S.sub='chat';render();window.scrollTo(0,0);}
   else if(a==='abrirTreino'){S.tab='treino';S.dia=t.dataset.dia;S.sub=null;render();window.scrollTo(0,0);}
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
+  else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
+  else if(a==='exFechar'){ fecharExercicio(); }
   else if(a==='feito'){S.feitos[t.dataset.k]=!S.feitos[t.dataset.k];lsSet('feitos',S.feitos);render();}
   else if(a==='concluir'){
     const lista=(S.registro.treinos||[]).concat([{data:hoje(),dia:t.dataset.dia}]).slice(-200);
