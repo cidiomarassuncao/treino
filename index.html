@@ -449,18 +449,31 @@ const minutos=(a,b)=>Math.max(0,(new Date(b)-new Date(a))/60000);
 // junta as amostras de sono por noite (data do despertar): total dormido, profundo e REM
 const ESTADO_SONO={1:'awake',2:'sleeping',3:'outofbed',4:'light',5:'deep',6:'rem',7:'awakeinbed'};
 function noitesDeSono(amostras){
-  const noites={};
+  // O plugin pode devolver varios registros com as mesmas etapas (ou fontes sobrepostas).
+  // Por isso juntamos os intervalos de cada tipo (dormindo, profundo, REM) sem contar o mesmo minuto duas vezes.
+  const ehAcordado=(e)=>/^(awake|inbed|outofbed|awakeinbed|out_of_bed|awake_in_bed)$/.test(e);
+  const ivs=[]; // {a,b,e}
   for(const s of (amostras||[])){
-    const k=diaLocal(s.endDate||s.startDate); const n=noites[k]||(noites[k]={min:0,profundo:0,rem:0,inicio:s.startDate,fim:s.endDate});
-    if(String(s.startDate)<String(n.inicio)) n.inicio=s.startDate; if(String(s.endDate)>String(n.fim)) n.fim=s.endDate;
-    const partes=(Array.isArray(s.stages)&&s.stages.length)?s.stages.map(g=>({estado:g.stage,min:minutos(g.startDate,g.endDate)})):[{estado:s.sleepState||'asleep',min:isFinite(+s.value)&&+s.value>0?+s.value:minutos(s.startDate,s.endDate)}];
-    for(const pt of partes){
-      const e=ESTADO_SONO[pt.estado]||String(pt.estado||'').toLowerCase();
-      if(/^(awake|inbed|outofbed|awakeinbed|out_of_bed|awake_in_bed)$/.test(e)) continue;
-      n.min+=pt.min; if(e==='deep') n.profundo+=pt.min; if(e==='rem') n.rem+=pt.min;
+    const lista=(Array.isArray(s.stages)&&s.stages.length)?s.stages.map(g=>({a:g.startDate,b:g.endDate,e:g.stage})):[{a:s.startDate,b:s.endDate,e:s.sleepState||'asleep'}];
+    for(const g of lista){
+      const e=ESTADO_SONO[g.e]||String(g.e||'').toLowerCase();
+      const a=new Date(g.a).getTime(), b=new Date(g.b).getTime();
+      if(!isFinite(a)||!isFinite(b)||b<=a||ehAcordado(e)) continue;
+      ivs.push({a,b,e});
     }
   }
-  for(const k in noites){ const n=noites[k]; n.min=Math.round(n.min); n.profundo=Math.round(n.profundo); n.rem=Math.round(n.rem); }
+  const uniao=(lista)=>{ const o=lista.map(x=>[x.a,x.b]).sort((x,y)=>x[0]-y[0]); const r=[]; for(const [a,b] of o){ const u=r[r.length-1]; if(u&&a<=u[1]) u[1]=Math.max(u[1],b); else r.push([a,b]); } return r; };
+  const total=(u)=>u.reduce((t,[a,b])=>t+(b-a)/60000,0);
+  // agrupa por noite (data do despertar de cada bloco contínuo)
+  const blocos=uniao(ivs); const noites={};
+  for(const [a,b] of blocos){
+    const k=diaLocal(new Date(b).toISOString());
+    const n=noites[k]||(noites[k]={min:0,profundo:0,rem:0,inicio:new Date(a).toISOString(),fim:new Date(b).toISOString()});
+    const dentro=(x)=>ivs.filter(i=>i.e===x&&i.a<b&&i.b>a).map(i=>({a:Math.max(i.a,a),b:Math.min(i.b,b)}));
+    n.min+=(b-a)/60000; n.profundo+=total(uniao(dentro('deep'))); n.rem+=total(uniao(dentro('rem')));
+    if(new Date(a).toISOString()<n.inicio) n.inicio=new Date(a).toISOString(); if(new Date(b).toISOString()>n.fim) n.fim=new Date(b).toISOString();
+  }
+  for(const k in noites){ const n=noites[k]; n.min=Math.round(n.min); n.profundo=Math.round(n.profundo); n.rem=Math.round(n.rem); if(n.min>16*60) delete noites[k]; }
   return noites;
 }
 
@@ -483,9 +496,11 @@ async function sincronizarSaude(manual){
     // 1ª leitura (ou leitura antiga): 14 dias. Depois, só os 2 últimos dias, somados ao que já foi lido.
     const recente=ant.sincronizado&&(Date.now()-new Date(ant.sincronizado).getTime()<3*864e5)&&ant.dias;
     const pend=new Set(ant.pendentes||[]);
-    const desde=(t)=>(recente&&!pend.has(t))?meiaNoite(1):meiaNoite(13);
+    const sonoReset=ant.vSono!==2; // versão 17: sono antigo vinha somado várias vezes, relê os 14 dias uma vez
+    const desde=(t)=>(recente&&!pend.has(t)&&!(t==='sleep'&&sonoReset))?meiaNoite(1):meiaNoite(13);
     const corte=diaLocal(meiaNoite(13));
     const dias={}; for(const k in (ant.dias||{})) if(k>=corte) dias[k]={...ant.dias[k]};
+    if(sonoReset) for(const k in dias){ delete dias[k].sono; delete dias[k].sonoProfundo; delete dias[k].sonoRem; }
     const D=(k)=>dias[k]||(dias[k]={});
     const limpa=(campos,ini)=>{ const k0=diaLocal(ini); for(const k in dias) if(k>=k0) campos.forEach(c=>delete dias[k][c]); };
     const vazio={...(ant.vazio||{})}; // tipos que o relógio não grava: consulta só 1 vez por semana
@@ -545,7 +560,7 @@ async function sincronizarSaude(manual){
     // sem FC de repouso gravada pelo relógio: usa a menor frequência do dia como estimativa
     for(const k in dias){ const d=dias[k]; if((!d.fcRepouso||d.fcRepousoEst)&&d.fcMin){ d.fcRepouso=d.fcMin; d.fcRepousoEst=true; } }
     diag.janela=recente?'2 dias (somados aos anteriores)':'14 dias';
-    S.saude={sincronizado:fim.toISOString(),dias,peso,pesoLido,treinos,permitidos:[...ok],diag,vazio,pendentes:[...new Set(pendentes)],
+    S.saude={vSono:(ok.has('sleep')&&!pendentes.includes('sleep'))?2:ant.vSono,sincronizado:fim.toISOString(),dias,peso,pesoLido,treinos,permitidos:[...ok],diag,vazio,pendentes:[...new Set(pendentes)],
       pausaAte:diag.limite?new Date(Date.now()+15*60e3).toISOString():null};
     await save('saude',S.saude);
     if(manual){
