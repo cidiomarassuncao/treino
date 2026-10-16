@@ -92,6 +92,12 @@ textarea{min-height:110px;resize:vertical}
 .chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
 .tabs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
 .tabs .chip{font-family:var(--display);font-stretch:75%;font-size:22px;font-weight:800;min-height:52px;border-radius:16px}
+.exw{display:flex;flex-direction:column;gap:6px}
+.carga-btn{align-self:flex-start;margin-left:46px;font-size:14px;color:var(--accent-ink)}
+.avatar-g{width:72px;height:72px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;color:var(--muted)}
+.avatar-img{width:100%;height:100%;object-fit:cover;display:block}
+.cg-linha{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
+.cg-linha input{width:100%;min-height:44px}
 .exm{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
 .exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
 .exm-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exm-imgs img{width:100%;height:auto;border-radius:12px;background:#fff;display:block}
@@ -164,7 +170,7 @@ const $nav = document.querySelector('nav.bottom');
 const S = {
   ready:false, cfg:null,
   tab:'inicio', sub:null,
-  perfil:null, exames:[], plano:null, registro:{treinos:[]},
+  perfil:null, foto:null, exames:[], plano:null, registro:{treinos:[]},
   dia:null, feitos:{}, busy:null, erro:null, rascunho:null, chat:[], confirmDel:null, editPerfil:false
 };
 
@@ -176,7 +182,7 @@ const fmtData = (iso)=>{if(!iso)return '';const p=String(iso).split('-');if(p.le
 const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 /* ---------- cofre: dados criptografados (AES-GCM) com uma chave mestra.
    A chave mestra fica guardada duas vezes: travada pela senha e travada pelo código de recuperação. ---------- */
-const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude'];
+const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto'];
 const ITER=310000;
 const COFRE={key:null, mestra:null, cache:{}, fila:Promise.resolve()};
 const rawGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
@@ -1297,6 +1303,10 @@ function telaPerfil(){
   const opt=(arr,v)=>arr.map(([k,t])=>`<option value="${k}"${String(v)===k?' selected':''}>${t}</option>`).join('');
   return `${novo?`<div class="stack-s" style="padding-top:12px"><span class="eyebrow">Primeiro acesso</span><h1>Vamos conhecer você</h1><p class="muted">Com esses dados o avaliador monta treino e alimentação do seu jeito. Leva 1 minuto.</p></div>`:header('Seu perfil',true)}
   <form id="fPerfil" class="stack" novalidate>
+    <div class="row" style="gap:14px;align-items:center"><div id="pFotoBox" class="avatar-g" aria-hidden="${S.foto?'false':'true'}">${S.foto?`<img src="${S.foto}" alt="Sua foto de perfil" class="avatar-img">`:ICON.user}</div>
+      <div class="stack-s" style="gap:8px;min-width:0"><span class="small muted" style="font-weight:600">Foto de perfil (opcional)</span>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn ghost" for="fFoto" style="cursor:pointer;min-height:44px">${S.foto?'Trocar foto':'Escolher foto'}</label>${S.foto?'<button type="button" class="btn plain" data-act="fotoRemover" style="min-height:44px">Remover</button>':''}</div>
+        <input id="fFoto" class="sr" type="file" accept="image/*"><span id="pFotoMsg" class="small muted" role="status"></span></div></div>
     <label class="f">Como quer ser chamado<input id="pNome" name="nome" required value="${h(p.nome)}" autocomplete="given-name"></label>
     <div class="grid2">
       <label class="f">Sexo<select id="pSexo" name="sexo">${opt([['masculino','Masculino'],['feminino','Feminino']],p.sexo)}</select></label>
@@ -1445,7 +1455,7 @@ function proximoDia(){
 function telaInicio(){
   const p=S.perfil; const nome=(p.nome||'').split(' ')[0];
   const dataTxt=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
-  let o=`<div class="row between"><div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">${h(dataTxt.charAt(0).toUpperCase()+dataTxt.slice(1))}</span><h1>Olá, ${h(nome)}</h1></div><button class="iconbtn" data-act="perfil" aria-label="Abrir seu perfil">${ICON.user}</button></div>`;
+  let o=`<div class="row between"><div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">${h(dataTxt.charAt(0).toUpperCase()+dataTxt.slice(1))}</span><h1>Olá, ${h(nome)}</h1></div><button class="iconbtn" data-act="perfil" aria-label="Abrir seu perfil" style="overflow:hidden;padding:0">${S.foto?`<img src="${S.foto}" alt="" class="avatar-img">`:ICON.user}</button></div>`;
   o+=statusBox();
   if(!iaPronta()) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="config">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1"><strong>Configure a IA</strong><span class="small">Sem ela o app não lê exames nem monta o plano.</span></span>${ICON.arrow}</button>`;
   if(!S.plano){
@@ -1568,7 +1578,7 @@ function telaTreino(){
   o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}">${h(x.id)}</button>`).join('')}</div>`;
   o+=`<div class="row between" style="align-items:flex-end"><div class="stack-s" style="gap:2px"><h2>Treino ${h(d.id)} · ${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
   if(t.orientacao) o+=`<p class="status ok">${h(t.orientacao)}</p>`;
-  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span><span class="small" style="color:var(--accent-ink)">Ver como fazer</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div>`;}).join('')}</div>`;
+  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="exw"><div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span><span class="small" style="color:var(--accent-ink)">Ver como fazer</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div><button class="chip carga-btn" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}">${resumoCarga(e)}</button></div>`;}).join('')}</div>`;
   const jaHoje=(S.registro.treinos||[]).some(x=>x.data===hoje());
   o+=jaHoje?`<p class="status ok row">${ICON.check}<span>Treino de hoje registrado. Bom trabalho.</span></p>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
   if(t.cardio) o+=`<div class="card stack-s"><h3>Aeróbico</h3><p class="small">${h(t.cardio)}</p></div>`;
@@ -1720,8 +1730,80 @@ async function abrirExercicio(e,foco){
 function exercicioPorChave(k){ const ds=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[]; for(const d of ds){ const ex=d.exercicios||[]; for(let i=0;i<ex.length;i++) if(d.id+i===k) return ex[i]; } return null; }
 document.addEventListener('keydown',(ev)=>{
   if(ev.key==='Escape'&&document.getElementById('exModal')){ fecharExercicio(); return; }
-  if(ev.key==='Tab'){ const m=document.getElementById('exModal'); if(m){ const f=[...m.querySelectorAll('button,a[href]')]; if(f.length){ const a=f[0],z=f[f.length-1]; if(ev.shiftKey&&document.activeElement===a){ ev.preventDefault(); z.focus(); } else if(!ev.shiftKey&&document.activeElement===z){ ev.preventDefault(); a.focus(); } } } }
+  if(ev.key==='Tab'){ const m=document.getElementById('exModal'); if(m){ const f=[...m.querySelectorAll('button,a[href],input')]; if(f.length){ const a=f[0],z=f[f.length-1]; if(ev.shiftKey&&document.activeElement===a){ ev.preventDefault(); z.focus(); } else if(!ev.shiftKey&&document.activeElement===z){ ev.preventDefault(); a.focus(); } } } }
   const t=ev.target.closest&&ev.target.closest('[role="button"][data-act]'); if(t&&(ev.key==='Enter'||ev.key===' ')){ ev.preventDefault(); t.click(); }
+});
+
+// ===== Carga usada em cada série (guardada em S.registro.cargas, dentro da cópia de segurança) =====
+const chaveCarga=(e)=>semAcento(e.nome);
+const sessoesCarga=(e)=>((S.registro.cargas||{})[chaveCarga(e)])||[];
+const kgTxt=(v)=>String(v).replace('.',',');
+const dataCurta=(d)=>String(d).slice(8,10)+'/'+String(d).slice(5,7);
+const serieTxt=(x)=>[x.kg!=null?kgTxt(x.kg)+' kg':'',x.r?x.r+(x.kg!=null?' reps':' reps'):''].filter(Boolean).join(' × ');
+function resumoCarga(e){
+  const ss=sessoesCarga(e); const hj=ss.find(x=>x.d===hoje());
+  if(hj&&hj.s.length) return 'Carga hoje: '+hj.s.map(x=>x.kg!=null?kgTxt(x.kg):'—').join(' · ')+' kg';
+  const u=ss[ss.length-1]; const m=u?Math.max(...u.s.map(x=>x.kg||0)):0;
+  return m?'Anotar carga · última: '+kgTxt(m)+' kg':'Anotar carga';
+}
+function linhaCarga(i,kg,r,pkg,pr){
+  return `<div class="cg-linha"><span class="small" style="font-weight:700;min-width:58px">Série ${i+1}</span><input data-c="kg" type="text" inputmode="decimal" autocomplete="off" maxlength="7" placeholder="${h(pkg||'kg')}" value="${h(kg)}" aria-label="Série ${i+1}, carga em quilos"><input data-c="r" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="${h(pr||'reps')}" value="${h(r)}" aria-label="Série ${i+1}, repetições"></div>`;
+}
+function abrirCarga(e,foco){
+  fecharExercicio(); EX_FOCO=foco||null;
+  const ss=sessoesCarga(e), hj=ss.find(x=>x.d===hoje()), ant=ss.filter(x=>x.d!==hoje()).slice(-3).reverse();
+  const m0=String(e.series||'').match(/\d+/); const n=Math.max(1,Math.min(8,m0?parseInt(m0[0],10):3));
+  const total=Math.max(n,hj?hj.s.length:0), base=ant[0]?ant[0].s:[];
+  let linhas=''; for(let i=0;i<total;i++){ const a=hj&&hj.s[i]; const b=base[i]||base[base.length-1]||{}; linhas+=linhaCarga(i,a&&a.kg!=null?kgTxt(a.kg):'',a&&a.r?a.r:'',b.kg!=null?kgTxt(b.kg):'',b.r||String(e.reps||'').match(/\d+/)&&String(e.reps).match(/\d+/)[0]||''); }
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.dataset.chave=chaveCarga(e); m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><div class="stack-s" style="gap:2px;min-width:0"><h2 id="exmTit">Carga · ${h(e.nome)}</h2><span class="small muted">${h(e.series||'')} × ${h(e.reps||'')}</span></div><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
+    ${ant.length?`<div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Últimas vezes</span>${ant.map(x=>`<span class="small">${h(dataCurta(x.d))}: ${x.s.map(serieTxt).map(h).join(' · ')}</span>`).join('')}</div>`:'<span class="small muted">Ainda sem registros deste exercício. Anote a carga de cada série em quilos.</span>'}
+    <div id="cgLista" class="stack-s">${linhas}</div>
+    <button type="button" class="btn ghost" data-act="cargaMais">Adicionar série</button>
+    <button type="button" class="btn block" data-act="cargaSalvar">Salvar carga</button></div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden';
+  const p=m.querySelector('input[data-c="kg"]'); if(p) p.focus();
+}
+async function salvarCarga(){
+  const m=document.getElementById('exModal'); if(!m||!m.dataset.chave) return;
+  const s=[]; for(const l of m.querySelectorAll('.cg-linha')){
+    const kg=parseFloat(l.querySelector('[data-c="kg"]').value.replace(',','.')), r=parseInt(l.querySelector('[data-c="r"]').value,10);
+    const okKg=isFinite(kg)&&kg>=0&&kg<=1000, okR=isFinite(r)&&r>0&&r<1000;
+    if(okKg||okR) s.push({kg:okKg?Math.round(kg*100)/100:null,r:okR?r:0});
+  }
+  const todas=Object.assign({},S.registro.cargas); const antes=(todas[m.dataset.chave]||[]).filter(x=>x.d!==hoje());
+  if(!s.length&&antes.length===(todas[m.dataset.chave]||[]).length){ toast('Digite pelo menos uma carga.'); return; }
+  todas[m.dataset.chave]=s.length?antes.concat([{d:hoje(),s}]).slice(-30):antes;
+  S.registro=Object.assign({},S.registro,{cargas:todas}); await save('registro',S.registro);
+  fecharExercicio(); toast(s.length?'Carga anotada.':'Carga de hoje removida.'); render();
+}
+// ===== Foto de perfil: reduzida para 256×256 (cerca de 20 KB), guardada criptografada à parte do perfil =====
+async function prepararFoto(file){
+  if(!file||!/^image\//.test(file.type||'')) throw new Error('tipo');
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,err)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=()=>err(new Error('img')); i.src=url; });
+    const L=256, c=document.createElement('canvas'); c.width=L; c.height=L;
+    const w=img.naturalWidth, a=img.naturalHeight, q=Math.min(w,a); if(!q) throw new Error('vazia');
+    c.getContext('2d').drawImage(img,(w-q)/2,(a-q)/2,q,q,0,0,L,L);
+    return c.toDataURL('image/jpeg',.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+function atualizarFotoUI(){
+  const box=document.getElementById('pFotoBox'); if(!box) return;
+  box.innerHTML=S.foto?`<img src="${S.foto}" alt="Sua foto de perfil" class="avatar-img">`:ICON.user; box.setAttribute('aria-hidden',S.foto?'false':'true');
+  const lab=document.querySelector('label[for="fFoto"]'); if(lab) lab.textContent=S.foto?'Trocar foto':'Escolher foto';
+  const tem=document.querySelector('[data-act="fotoRemover"]');
+  if(S.foto&&!tem&&lab){ const b=document.createElement('button'); b.type='button'; b.className='btn plain'; b.dataset.act='fotoRemover'; b.style.minHeight='44px'; b.textContent='Remover'; lab.after(b); }
+  if(!S.foto&&tem) tem.remove();
+}
+document.addEventListener('change',async(ev)=>{
+  const t=ev.target; if(!t||t.id!=='fFoto') return; const f=t.files&&t.files[0]; if(!f) return;
+  const msg=document.getElementById('pFotoMsg');
+  try{ S.foto=await prepararFoto(f); await save('foto',S.foto); atualizarFotoUI(); if(msg) msg.textContent='Foto salva.'; }
+  catch(e){ if(msg) msg.textContent='Não consegui abrir essa imagem. Tente outra foto (JPG ou PNG).'; }
+  t.value='';
 });
 
 document.addEventListener('click', async (ev)=>{
@@ -1738,10 +1820,14 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='carga'){ const e=exercicioPorChave(t.dataset.k); if(e) abrirCarga(e,t); }
+  else if(a==='cargaMais'){ const l=document.getElementById('cgLista'); if(l&&l.children.length<12){ l.insertAdjacentHTML('beforeend',linhaCarga(l.children.length,'','','','')); const ins=l.querySelectorAll('input[data-c="kg"]'); ins[ins.length-1].focus(); } }
+  else if(a==='cargaSalvar'){ await salvarCarga(); }
+  else if(a==='fotoRemover'){ S.foto=null; await save('foto',null); atualizarFotoUI(); const mg=document.getElementById('pFotoMsg'); if(mg) mg.textContent='Foto removida.'; }
   else if(a==='feito'){S.feitos[t.dataset.k]=!S.feitos[t.dataset.k];lsSet('feitos',S.feitos);render();}
   else if(a==='concluir'){
     const lista=(S.registro.treinos||[]).concat([{data:hoje(),dia:t.dataset.dia}]).slice(-200);
-    S.registro={treinos:lista}; S.feitos={}; lsSet('feitos',{}); S.dia=null; await save('registro',S.registro); toast('Treino registrado.'); render();
+    S.registro=Object.assign({},S.registro,{treinos:lista}); S.feitos={}; lsSet('feitos',{}); S.dia=null; await save('registro',S.registro); toast('Treino registrado.'); render();
   }
   else if(a==='digitar'){S.sub='digitar';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='rmItem'){syncRev();S.rascunho.itens.splice(+t.dataset.ix,1);render();}
@@ -1798,14 +1884,14 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='lockVoltar'){S.lock='entrar';S.erro=null;render();}
   else if(a==='apagarTudo'){
     try{ Object.keys(localStorage).filter(k=>k.startsWith('tn:')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
-    fecharCofre(); Object.assign(S,{perfil:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
+    fecharCofre(); Object.assign(S,{perfil:null,foto:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
   }
   else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
   else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
   else if(a==='exportar'){
-    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,exames:S.exames,plano:S.plano,registro:S.registro};
+    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,exames:S.exames,plano:S.plano,registro:S.registro};
     if(NATIVO){ try{ await navigator.clipboard.writeText(JSON.stringify(dados)); toast('Cópia copiada. Cole num e-mail ou no WhatsApp para você mesmo e guarde.'); }catch(e){ toast('Não consegui copiar. Faça a cópia pelo app no Chrome.'); } return; }
     const blob=new Blob([JSON.stringify(dados,null,1)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const ln=document.createElement('a'); ln.href=u; ln.download='treino-nutricao-'+hoje()+'.json';
@@ -1928,8 +2014,8 @@ document.addEventListener('change',(ev)=>{
     f.text().then(async tx=>{
       let d; try{d=JSON.parse(tx);}catch(e){toast('Esse arquivo não é uma cópia do app.');return;}
       if(!d||d.app!=='treino-nutricao'){toast('Esse arquivo não é uma cópia do app.');return;}
-      S.perfil=d.perfil||S.perfil; S.exames=Array.isArray(d.exames)?d.exames:[]; S.plano=d.plano||null; S.registro=d.registro&&d.registro.treinos?d.registro:{treinos:[]};
-      await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro);
+      S.perfil=d.perfil||S.perfil; S.exames=Array.isArray(d.exames)?d.exames:[]; S.plano=d.plano||null; S.registro=d.registro&&d.registro.treinos?d.registro:{treinos:[]}; S.foto=(typeof d.foto==='string'&&d.foto.startsWith('data:image/'))?d.foto:null;
+      await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro); await save('foto',S.foto);
       S.editPerfil=false; S.tab='inicio'; toast('Cópia restaurada.'); render();
     });
   }
@@ -1946,14 +2032,14 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 function bloquear(){
   if(!COFRE.key) return;
   fecharCofre(); if(chatCtl) chatCtl.abort();
-  Object.assign(S,{perfil:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
+  Object.assign(S,{perfil:null,foto:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
   window.scrollTo(0,0); render();
 }
 
 async function carregarDados(){
   const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
   S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
-  S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
+  S.foto=lsGet('foto')||null; S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
   if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
   S.saude=lsGet('saude');
   S.ready=true; render(); window.scrollTo(0,0);
