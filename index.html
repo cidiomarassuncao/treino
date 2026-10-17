@@ -1583,6 +1583,7 @@ function telaTreino(){
   o+=jaHoje?`<p class="status ok row">${ICON.check}<span>Treino de hoje registrado. Bom trabalho.</span></p>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
   if(t.cardio) o+=`<div class="card stack-s"><h3>Aeróbico</h3><p class="small">${h(t.cardio)}</p></div>`;
   if(!t.dias.some(x=>(x.exercicios||[]).some(e=>e.alternativas&&e.alternativas.length))) o+=`<button class="btn ghost block" data-act="pedirAlternativas"${iaPronta()?'':' disabled'}>Pedir alternativas para cada exercício</button>`;
+  o+=`<button class="btn ghost block" data-act="evolucao">Ver evolução das cargas</button>`;
   o+=`<button class="btn plain block" data-act="pedirMudancaTreino"${iaPronta()?'':' disabled'}>Pedir mudança no treino ao instrutor</button>`;
   o+=`<p class="note">Sentiu dor articular ou tontura, pare o exercício. O instrutor propõe a troca e você aplica no treino com um toque.</p>`;
   return o;
@@ -1636,7 +1637,8 @@ function render(){
   else if(S.editCfg||!S.cfgVisto){ html=telaConfig(); $nav.hidden=!S.cfgVisto; }
   else{
     $nav.hidden=false;
-    if(S.sub==='analise'&&S.plano) html=telaAnalise();
+    if(S.sub==='evolucao') html=telaEvolucao();
+    else if(S.sub==='analise'&&S.plano) html=telaAnalise();
     else if(S.sub==='chat') html=telaChat();
     else if(S.sub==='digitar') html=telaDigitar();
     else if(S.sub==='revisar'&&S.rascunho) html=telaRevisar();
@@ -1758,6 +1760,7 @@ function abrirCarga(e,foco){
   const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.dataset.chave=chaveCarga(e); m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
   m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><div class="stack-s" style="gap:2px;min-width:0"><h2 id="exmTit">Carga · ${h(e.nome)}</h2><span class="small muted">${h(e.series||'')} × ${h(e.reps||'')}</span></div><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
     ${ant.length?`<div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Últimas vezes</span>${ant.map(x=>`<span class="small">${h(dataCurta(x.d))}: ${x.s.map(serieTxt).map(h).join(' · ')}</span>`).join('')}</div>`:'<span class="small muted">Ainda sem registros deste exercício. Anote a carga de cada série em quilos.</span>'}
+    ${evolucaoHtml(ss)}
     <div id="cgLista" class="stack-s">${linhas}</div>
     <button type="button" class="btn ghost" data-act="cargaMais">Adicionar série</button>
     <button type="button" class="btn block" data-act="cargaSalvar">Salvar carga</button></div>`;
@@ -1776,8 +1779,48 @@ async function salvarCarga(){
   if(!s.length&&antes.length===(todas[m.dataset.chave]||[]).length){ toast('Digite pelo menos uma carga.'); return; }
   todas[m.dataset.chave]=s.length?antes.concat([{d:hoje(),s}]).slice(-30):antes;
   S.registro=Object.assign({},S.registro,{cargas:todas}); await save('registro',S.registro);
-  fecharExercicio(); toast(s.length?'Carga anotada.':'Carga de hoje removida.'); render();
+  const maxAntes=Math.max(0,...antes.map(x=>Math.max(0,...x.s.map(y=>y.kg||0)))), maxHoje=Math.max(0,...s.map(y=>y.kg||0));
+  fecharExercicio(); toast(!s.length?'Carga de hoje removida.':(maxAntes>0&&maxHoje>maxAntes?'Novo recorde: '+kgTxt(maxHoje)+' kg!':'Carga anotada.')); render();
 }
+// ===== Evolução das cargas =====
+function pontosCarga(ss){ return (ss||[]).map(x=>({d:x.d,max:Math.max(0,...x.s.map(y=>y.kg||0)),vol:x.s.reduce((t,y)=>t+(y.kg||0)*(y.r||0),0)})).filter(p=>p.max>0).sort((a,b)=>a.d<b.d?-1:1).slice(-12); }
+function resumoEvolucao(pts){
+  if(!pts.length) return null;
+  const pri=pts[0], ult=pts[pts.length-1], rec=pts.reduce((m,p)=>p.max>m.max?p:m,pts[0]), dif=Math.round((ult.max-pri.max)*100)/100;
+  const pct=pri.max?Math.round((ult.max-pri.max)/pri.max*1000)/10:null;
+  return {pri,ult,rec,dif,pct,n:pts.length};
+}
+const sinal=(v)=>(v>0?'+':v<0?'−':'')+kgTxt(Math.abs(v));
+function textoEvolucao(r){
+  if(!r) return '';
+  if(r.n<2) return 'Primeiro registro: '+kgTxt(r.ult.max)+' kg. Anote nos próximos treinos para ver a evolução.';
+  return 'De '+kgTxt(r.pri.max)+' para '+kgTxt(r.ult.max)+' kg ('+sinal(r.dif)+' kg'+(r.pct!=null?', '+(r.pct>0?'+':r.pct<0?'−':'')+kgTxt(Math.abs(r.pct))+'%':'')+') em '+r.n+' treinos · recorde '+kgTxt(r.rec.max)+' kg ('+dataCurta(r.rec.d)+')';
+}
+function graficoCarga(pts,w,hh){
+  w=w||300; hh=hh||110; if(pts.length<2) return '';
+  const L=14,R=14,T=22,B=20, vs=pts.map(p=>p.max); let mn=Math.min(...vs), mx=Math.max(...vs); if(mx===mn){ mn-=1; mx+=1; }
+  const X=(i)=>L+(w-L-R)*i/(pts.length-1), Y=(v)=>T+(hh-T-B)*(1-(v-mn)/(mx-mn));
+  const linha=pts.map((p,i)=>X(i).toFixed(1)+','+Y(p.max).toFixed(1)).join(' ');
+  const ult=pts.length-1, rec=pts.reduce((m,p,i)=>p.max>=pts[m].max?i:m,0);
+  const rot=(i,anc)=>`<text x="${X(i).toFixed(1)}" y="${(Y(pts[i].max)-8).toFixed(1)}" text-anchor="${anc}" font-size="11" font-weight="700" style="fill:var(--fg)">${kgTxt(pts[i].max)}</text>`;
+  const r=resumoEvolucao(pts);
+  return `<svg viewBox="0 0 ${w} ${hh}" width="100%" role="img" aria-label="Evolução da carga: ${h(textoEvolucao(r))}" style="display:block;overflow:visible"><polyline points="${linha}" fill="none" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" style="stroke:var(--accent)"/>${pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.max).toFixed(1)}" r="${i===rec?5:3.5}" style="fill:${i===rec?'var(--accent-ink)':'var(--accent)'}"/>`).join('')}${rot(0,'start')}${ult!==0?rot(ult,'end'):''}<text x="${L}" y="${hh-4}" font-size="10" style="fill:var(--muted)">${dataCurta(pts[0].d)}</text><text x="${w-R}" y="${hh-4}" text-anchor="end" font-size="10" style="fill:var(--muted)">${dataCurta(pts[ult].d)}</text></svg>`;
+}
+function evolucaoHtml(ss){
+  const pts=pontosCarga(ss); if(!pts.length) return '';
+  return `<div class="stack-s" style="gap:6px"><span class="small muted" style="font-weight:600">Evolução (maior carga de cada treino)</span>${graficoCarga(pts)}<span class="small">${h(textoEvolucao(resumoEvolucao(pts)))}</span></div>`;
+}
+function telaEvolucao(){
+  const vistos=new Set(), itens=[];
+  for(const d of ((S.plano&&S.plano.treino&&S.plano.treino.dias)||[])) (d.exercicios||[]).forEach((e,i)=>{ const c=chaveCarga(e); if(vistos.has(c)) return; vistos.add(c); const pts=pontosCarga(sessoesCarga(e)); if(pts.length) itens.push({e,k:d.id+i,pts,r:resumoEvolucao(pts)}); });
+  let o=header('Evolução das cargas',true);
+  if(!itens.length) return o+`<p class="muted">Ainda não há cargas anotadas. Em cada exercício do treino, toque em "Anotar carga" para registrar e acompanhar sua evolução aqui.</p>`;
+  const subiu=itens.filter(x=>x.r.n>1&&x.r.dif>0).length;
+  o+=`<p class="small muted">${itens.length} exercícios com carga anotada${subiu?' · '+subiu+(subiu===1?' subiu':' subiram')+' desde o primeiro registro':''}.</p>`;
+  o+=`<div class="stack-s">${itens.map(x=>`<div class="card stack-s" style="gap:6px"><div class="row between" style="gap:10px;align-items:flex-start"><strong style="min-width:0">${h(x.e.nome)}</strong><button class="chip" style="min-height:44px;flex:none" data-act="carga" data-k="${h(x.k)}" aria-label="Anotar carga de ${h(x.e.nome)}">Anotar</button></div>${graficoCarga(x.pts,300,100)}<span class="small muted">${h(textoEvolucao(x.r))}</span></div>`).join('')}</div>`;
+  return o;
+}
+
 // ===== Foto de perfil: reduzida para 256×256 (cerca de 20 KB), guardada criptografada à parte do perfil =====
 async function prepararFoto(file){
   if(!file||!/^image\//.test(file.type||'')) throw new Error('tipo');
@@ -1820,6 +1863,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='evolucao'){ S.sub='evolucao'; render(); window.scrollTo(0,0); }
   else if(a==='carga'){ const e=exercicioPorChave(t.dataset.k); if(e) abrirCarga(e,t); }
   else if(a==='cargaMais'){ const l=document.getElementById('cgLista'); if(l&&l.children.length<12){ l.insertAdjacentHTML('beforeend',linhaCarga(l.children.length,'','','','')); const ins=l.querySelectorAll('input[data-c="kg"]'); ins[ins.length-1].focus(); } }
   else if(a==='cargaSalvar'){ await salvarCarga(); }
