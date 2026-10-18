@@ -1327,9 +1327,10 @@ function telaPerfil(){
     ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
   </form>
   ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?Object.entries(TAREFAS).map(([t,n])=>h(n)+': '+h(PROV[iaDaTarefa(t)].nome.split(' ').pop())).join(' · ')+(comChave().length>1&&S.cfg.reserva!==false?'. Uma cobre a outra se falhar.':''):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
-  <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">O app pede a senha ao abrir e depois de 5 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
+  <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">O app pede a senha ao abrir e depois de 15 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
   <div class="grid2"><button class="btn ghost" data-act="trocarSenha">Trocar senha</button><button class="btn ghost" data-act="bloquear">Bloquear agora</button></div>
-  <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button></div>
+  <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button>
+  ${bioDisponivel()?`<div class="stack-s" style="gap:6px"><span class="small muted">${bioAtiva()?'A digital está ativa: ao abrir o app, ela entra no lugar da senha. A senha continua valendo.':'Entre com a digital do aparelho em vez de digitar a senha. A senha e o código de recuperação continuam valendo.'}</span><button class="btn ghost block" data-act="${bioAtiva()?'bioDesativar':'bioAtivar'}">${bioAtiva()?'Desativar a digital':'Ativar a digital'}</button></div>`:''}</div>
   <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular, criptografados com a sua senha. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
   <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
 }
@@ -1398,6 +1399,7 @@ function telaSenha(){
     <p class="note">Senha com no mínimo 4 caracteres; pode ser só números. No próximo passo o app gera um código de recuperação e prepara um e-mail com ele para você mesmo.</p>`:''}
     ${mostrar}
     <button class="btn block" type="submit"${S.busy||espera?' disabled':''}>${espera?'Aguarde '+espera+' s':(criar?'Criar senha':'Entrar')}</button>
+    ${!criar&&bioAtiva()&&bioDisponivel()?'<button type="button" class="btn ghost block" data-act="bioEntrar">Entrar com a digital</button>':''}
     ${criar?'':'<button type="button" class="btn plain block" data-act="esqueci">Esqueci a senha</button>'}
   </form>`;
 }
@@ -1931,6 +1933,12 @@ document.addEventListener('click', async (ev)=>{
     fecharCofre(); Object.assign(S,{perfil:null,foto:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
   }
   else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
+  else if(a==='bioEntrar'){ await tentarDigital(false); }
+  else if(a==='bioAtivar'){
+    try{ await ativarBio(); toast('Digital ativada. Ao abrir o app, ela entra no lugar da senha.'); }
+    catch(e){ toast(e&&e.name==='NotAllowedError'?'Digital não confirmada. Nada foi alterado.':'Este aparelho ou navegador não consegue travar a chave com a digital. Continue usando a senha.'); }
+    render(); }
+  else if(a==='bioDesativar'){ const c=rawGet('cofre'); if(c){ delete c.bio; rawSet('cofre',c); } toast('Digital desativada. O app volta a pedir só a senha.'); render(); }
   else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
@@ -2073,6 +2081,39 @@ function falhouTentativa(msg){
 }
 function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bloqAte||0)){clearInterval(t);} if((S.lock==='entrar'||S.lock==='recuperar')&&!S.busy){ const ids=['sSenha','rCodigo','rNova','rNova2']; const vals=ids.map(i=>{const e=document.getElementById(i);return e?e.value:null;}); render(); ids.forEach((i,n)=>{const e=document.getElementById(i);if(e&&vals[n]!=null)e.value=vals[n];}); } },1000); }
 
+// ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
+// O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
+const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
+const bioDisponivel=()=>!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
+const bioAtiva=()=>{ const c=rawGet('cofre'); return !!(c&&c.bio&&c.bio.id); };
+async function bioChave(seg){
+  const base=await crypto.subtle.importKey('raw',seg,'HKDF',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(32),info:new TextEncoder().encode('tn-bio-v1')},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function bioSegredo(idBytes){ // pede a digital e devolve o segredo do sensor
+  const r=await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rpId:location.hostname,allowCredentials:[{type:'public-key',id:idBytes,transports:['internal']}],userVerification:'required',timeout:60000,extensions:{prf:{eval:{first:BIO_SALT}}}}});
+  const ext=r&&r.getClientExtensionResults?r.getClientExtensionResults():null; const out=ext&&ext.prf&&ext.prf.results&&ext.prf.results.first;
+  if(!out) throw new Error('sem-prf'); return new Uint8Array(out);
+}
+async function ativarBio(){
+  if(!COFRE.mestra) throw new Error('fechado');
+  const cred=await navigator.credentials.create({publicKey:{rp:{name:'Treino e Nutrição',id:location.hostname},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'treino-nutricao',displayName:'Treino e Nutrição'},challenge:crypto.getRandomValues(new Uint8Array(32)),pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'preferred'},timeout:60000,extensions:{prf:{}}}});
+  const id=new Uint8Array(cred.rawId);
+  const chave=await bioChave(await bioSegredo(id)); // 2ª leitura da digital: gera o segredo que trava a chave mestra
+  const c=rawGet('cofre'); c.bio={id:b64(id),pac:await cifrarBytes(chave,COFRE.mestra)}; rawSet('cofre',c); // só grava se tudo deu certo
+}
+async function entrarComDigital(){
+  const c=rawGet('cofre'); if(!c||!c.bio) return false;
+  const chave=await bioChave(await bioSegredo(unb64(c.bio.id)));
+  await carregarCache(await decifrarBytes(chave,c.bio.pac)); return true;
+}
+async function tentarDigital(silencioso){
+  if(S.busy||S.lock!=='entrar') return;
+  try{ if(await entrarComDigital()){ rawDel('tentativas'); S.lock=null; S.erro=null; await carregarDados(); } }
+  catch(e){ if(!silencioso){ S.erro=(e&&e.name==='NotAllowedError')?'Digital não confirmada. Tente de novo ou digite a senha.':'Não consegui usar a digital agora. Digite a senha.'; render(); } }
+}
+const autoDigital=()=>{ if(S.lock==='entrar'&&bioAtiva()&&bioDisponivel()) setTimeout(()=>tentarDigital(true),450); };
+
 function bloquear(){
   if(!COFRE.key) return;
   fecharCofre(); if(chatCtl) chatCtl.abort();
@@ -2091,11 +2132,11 @@ async function carregarDados(){
   if(NATIVO&&S.saude&&(Date.now()-new Date(S.saude.sincronizado).getTime()>((S.saude.pendentes||[]).length?15*60e3:2*3600e3))) sincronizarSaude(false);
 }
 
-// bloqueio automático: 5 minutos em segundo plano
-const BLOQ_MS=5*60*1000; let saiuEm=null;
+// bloqueio automático: 15 minutos em segundo plano
+const BLOQ_MS=15*60*1000; let saiuEm=null;
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){ saiuEm=Date.now(); }
-  else if(saiuEm&&COFRE.key&&Date.now()-saiuEm>=BLOQ_MS){ saiuEm=null; COFRE.fila.then(bloquear); }
+  else if(saiuEm&&COFRE.key&&Date.now()-saiuEm>=BLOQ_MS){ saiuEm=null; COFRE.fila.then(()=>{ bloquear(); autoDigital(); }); }
   else saiuEm=null;
 });
 
@@ -2111,7 +2152,7 @@ async function boot(){
   } else {
     S.migrar=CHAVES.some(k=>rawGet(k)!==null); S.lock='criar';
   }
-  render(); setTimeout(()=>{const i=document.getElementById('sSenha');if(i)i.focus();},50);
+  render(); setTimeout(()=>{const i=document.getElementById('sSenha');if(i)i.focus();},50); autoDigital();
 }
 boot();
 })();
