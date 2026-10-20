@@ -1327,10 +1327,10 @@ function telaPerfil(){
     ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
   </form>
   ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?Object.entries(TAREFAS).map(([t,n])=>h(n)+': '+h(PROV[iaDaTarefa(t)].nome.split(' ').pop())).join(' · ')+(comChave().length>1&&S.cfg.reserva!==false?'. Uma cobre a outra se falhar.':''):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
-  <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">O app pede a senha ao abrir e depois de 15 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
+  <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">Versão ${VERSAO_APP}. O app pede a senha ao abrir e depois de 15 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
   <div class="grid2"><button class="btn ghost" data-act="trocarSenha">Trocar senha</button><button class="btn ghost" data-act="bloquear">Bloquear agora</button></div>
   <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button>
-  ${bioDisponivel()?`<div class="stack-s" style="gap:6px"><span class="small muted">${bioAtiva()?'A digital está ativa: ao abrir o app, ela entra no lugar da senha. A senha continua valendo.':'Entre com a digital do aparelho em vez de digitar a senha. A senha e o código de recuperação continuam valendo.'}</span><button class="btn ghost block" data-act="${bioAtiva()?'bioDesativar':'bioAtivar'}">${bioAtiva()?'Desativar a digital':'Ativar a digital'}</button></div>`:''}</div>
+  ${bioDisponivel()?`<div class="stack-s" style="gap:6px"><span class="small muted">${bioAtiva()?'A digital está ativa: ao abrir o app, ela entra no lugar da senha. A senha continua valendo.':'Entre com a digital do aparelho em vez de digitar a senha. A senha e o código de recuperação continuam valendo.'}</span><button class="btn ghost block" data-act="${bioAtiva()?'bioDesativar':'bioAtivar'}">${bioAtiva()?'Desativar a digital':'Ativar a digital'}</button></div>`:`<div class="stack-s" style="gap:6px"><span class="small muted">Entrar com a digital: indisponível aqui, porque ${h(bioMotivo()||'o aparelho não respondeu ao teste.')} Use a senha.</span></div>`}</div>
   <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular, criptografados com a sua senha. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
   <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
 }
@@ -2084,6 +2084,12 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
+const VERSAO_APP=22;
+function bioMotivo(){
+  if(!window.isSecureContext) return 'o app não está num endereço seguro (https).';
+  if(!window.PublicKeyCredential) return NATIVO?'o app Android não oferece, dentro dele, o recurso de digital do navegador.':'este navegador não oferece o recurso de digital.';
+  return '';
+}
 const bioDisponivel=()=>!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
 const bioAtiva=()=>{ const c=rawGet('cofre'); return !!(c&&c.bio&&c.bio.id); };
 async function bioChave(seg){
