@@ -112,6 +112,7 @@ textarea{min-height:110px;resize:vertical}
 .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;font-weight:600;color:var(--muted)}
 .dot{width:34px;height:34px;margin:6px auto 0;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px dashed var(--faint)}
 .dot.done{background:var(--accent);color:var(--on-accent);border:0}
+.cd{display:block;margin-top:4px;min-height:16px;font-size:11px;font-weight:700;color:var(--accent-ink)}
 .dot.today{border:2px solid var(--accent)}
 .anel{flex:none;display:grid;place-items:center;position:relative}
 .anel span{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:22px;line-height:1}
@@ -654,8 +655,8 @@ function cartaoRelogio(){
 function contexto(){
   const p=S.perfil||{};
   const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,refCurta(i.referencia),i.situacao,(i.anteriores&&i.anteriores.length)?'antes: '+i.anteriores.map(a=>a.valor+' em '+a.data).join(', '):''].filter(Boolean).join(' | '))}));
-  const rs=resumoSaude();
-  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'');
+  const rs=resumoSaude(), cd=cardiosParaIA();
+  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'')+(cd.length?'\nCARDIOS FEITOS NOS DIAS LIVRES (últimos 14 dias): '+JSON.stringify(cd):'');
 }
 
 const REGRAS = `Você atua ao mesmo tempo como nutricionista esportivo, avaliador físico e personal trainer, falando português do Brasil, com linguagem simples e direta.
@@ -665,7 +666,8 @@ Regras de segurança, sempre:
 - Déficit calórico moderado (no máximo cerca de 20% do gasto estimado). Nunca abaixo de 1.200 kcal para mulheres ou 1.500 kcal para homens.
 - Respeite lesões, dores e restrições informadas; troque exercícios que as agravem.
 - Use alimentos comuns no Brasil e exercícios que existam no local de treino informado.
-- Se houver dados do relógio, use sono, frequência cardíaca de repouso, HRV e passos para ajustar volume, intensidade e calorias: noites curtas ou FC de repouso acima da média pedem treino mais leve e mais recuperação.`;
+- Se houver dados do relógio, use sono, frequência cardíaca de repouso, HRV e passos para ajustar volume, intensidade e calorias: noites curtas ou FC de repouso acima da média pedem treino mais leve e mais recuperação.
+- Se houver cardios feitos nos dias livres, considere o gasto extra e a recuperação: evite volume pesado de pernas logo depois de um cardio longo ou forte e não corte calorias só por causa deles.`;
 
 async function gerarPlano(){
   if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
@@ -1444,12 +1446,16 @@ function anel(feitos,total,tam){
 function semana(){
   const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
   const feitos=new Set((S.registro.treinos||[]).map(t=>t.data));
+  const cardioPorDia={}; let cmTot=0; for(const c of (S.registro.cardios||[])) cardioPorDia[c.d]=(cardioPorDia[c.d]||0)+(c.min||0);
   const nomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']; let c=0;
   const cells=nomes.map((n,i)=>{const x=new Date(seg);x.setDate(seg.getDate()+i);const iso=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
-    const ok=feitos.has(iso); if(ok)c++; const t=i===dow;
-    return `<div><span${t?' style="color:var(--fg);font-weight:700"':''}>${t?'Hoje':n}</span><span class="dot${ok?' done':''}${t&&!ok?' today':''}" role="img" aria-label="${n}: ${ok?'treino feito':'sem treino registrado'}">${ok?ICON.check.replace(/20/g,'16'):''}</span></div>`;}).join('');
-  return {cells,c};
+    const ok=feitos.has(iso); if(ok)c++; const cm=cardioPorDia[iso]||0; cmTot+=cm; const t=i===dow;
+    return `<div><span${t?' style="color:var(--fg);font-weight:700"':''}>${t?'Hoje':n}</span><span class="dot${ok?' done':''}${t&&!ok?' today':''}" role="img" aria-label="${n}: ${ok?'treino feito':'sem treino registrado'}">${ok?ICON.check.replace(/20/g,'16'):''}</span><span class="cd"${cm?` role="img" aria-label="${n}: cardio, ${cm} minutos"`:' aria-hidden="true"'}>${cm?cm+"'":''}</span></div>`;}).join('');
+  return {cells,c,cm:cmTot};
 }
+const feitoHoje=(id)=>(S.registro.treinos||[]).some(x=>x.data===hoje()&&x.dia===id);
+const chaveAlerta=(a)=>semAcento((a.titulo||'')+'|'+(a.texto||'')).replace(/\s+/g,' ').trim();
+const alertaVerificado=(a)=>((S.registro.alertasOk||{})[chaveAlerta(a)])||null;
 function proximoDia(){
   const dias=S.plano.treino.dias; const n=(S.registro.treinos||[]).length; return dias[n%dias.length];
 }
@@ -1469,11 +1475,11 @@ function telaInicio(){
   const pl=S.plano; const prox=proximoDia(); const w=semana(); const recado=recadoRecuperacao();
   o+=`<div class="hero"><div class="row between" style="align-items:flex-start;gap:14px"><div class="stack-s" style="gap:6px;min-width:0"><span class="eyebrow" style="color:var(--accent-ink)">Próximo treino</span><span class="grande">Treino ${h(prox.id)}</span><span style="font-weight:700;font-size:16px">${h(prox.titulo)}</span><span class="sub">${(prox.exercicios||[]).length} exercícios · ~${h(prox.duracao_min||S.perfil.minutos)} min</span></div>${anel(w.c,pl.treino.dias.length)}</div>${recado?`<p class="status warn small row" style="align-items:flex-start">${ICON.warn}<span>${h(recado)}</span></p>`:''}<button class="btn block" data-act="abrirTreino" data-dia="${h(prox.id)}">Começar treino</button></div>`;
   o+=`<div class="grid2"><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Calorias do dia</span><span class="num">${num(pl.dieta.calorias)} <small>kcal</small></span></button><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Proteína</span><span class="num">${num(pl.dieta.proteina_g)} <small>g</small></span></button></div>`;
-  const al=(pl.alertas||[]);
+  const al=(pl.alertas||[]).filter(a=>!alertaVerificado(a));
   if(al.length) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1;min-width:0"><strong>${al.length} ponto${al.length>1?'s':''} de atenção</strong><span class="small">${h(al.slice(0,2).map(a=>a.titulo).join(' e '))}</span></span>${ICON.arrow}</button>`;
-  else o+=`<button class="alert ok" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.check}<span style="flex:1"><strong>Ver análise completa</strong></span>${ICON.arrow}</button>`;
+  else o+=`<button class="alert ok" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.check}<span style="flex:1"><strong>${(pl.alertas||[]).length?'Pontos de atenção verificados':'Ver análise completa'}</strong></span>${ICON.arrow}</button>`;
   o+=cartaoRelogio();
-  o+=`<div class="card stack"><div class="row between"><h3>Esta semana</h3><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos</span></div><div class="week">${w.cells}</div></div>`;
+  o+=`<div class="card stack"><div class="row between"><h3>Esta semana</h3><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos${w.cm?' · '+w.cm+' min de cardio':''}</span></div><div class="week">${w.cells}</div></div>`;
   o+=`<button class="card row" style="font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%" data-act="chat">${ICON.chat}<span class="stack-s" style="gap:2px;flex:1"><strong>Pergunte ao instrutor</strong><span class="small muted">Troca de exercício, substituição de alimento, dúvidas do plano</span></span>${ICON.arrow}</button>`;
   return o;
 }
@@ -1483,7 +1489,7 @@ function telaAnalise(){
   let o=header('Análise e plano',true);
   o+=`<div class="dark"><span class="eyebrow">Resumo do avaliador</span><p style="font-size:16px;line-height:1.5">${h(pl.resumo)}</p></div>`;
   if(m.peso_kg||m.gordura_pct) o+=`<div class="grid3"><div class="tile"><span class="small muted" style="font-weight:600">Peso hoje</span><span class="num">${num(S.perfil.peso,1)} <small>kg</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Meta de peso</span><span class="num">${m.peso_kg?num(m.peso_kg,1):'—'} <small>kg</small></span></div><div class="tile"><span class="small muted" style="font-weight:600">Prazo</span><span class="num">${num(m.prazo_semanas)} <small>sem.</small></span></div></div>`;
-  if((pl.alertas||[]).length) o+=`<div class="stack-s"><h3 class="muted">Pontos de atenção</h3>${pl.alertas.map(a=>`<div class="alert ${a.nivel==='medico'?'bad':'warn'}">${ICON.warn}<span class="stack-s" style="gap:2px"><strong>${h(a.titulo)}</strong><span class="small">${h(a.texto)}</span></span></div>`).join('')}</div>`;
+  if((pl.alertas||[]).length){ const nv=pl.alertas.filter(a=>!alertaVerificado(a)).length; o+=`<div class="stack-s"><h3 class="muted">Pontos de atenção</h3><span class="small muted">${nv?nv+(nv===1?' ainda não verificado':' ainda não verificados'):'Todos verificados'}. Marque quando você já conferiu ou conversou com o médico.</span>${pl.alertas.map((a,i)=>{ const v=alertaVerificado(a); return `<div class="alert ${v?'ok':(a.nivel==='medico'?'bad':'warn')}">${v?ICON.check:ICON.warn}<span class="stack-s" style="gap:6px;flex:1;min-width:0"><strong>${h(a.titulo)}</strong><span class="small">${h(a.texto)}</span><button class="chip" style="align-self:flex-start;min-height:44px" aria-pressed="${!!v}" data-act="alertaOk" data-i="${i}">${v?'Verificado em '+dataCurta(v)+' · desfazer':'Marcar como verificado'}</button></span></div>`; }).join('')}</div>`; }
   if((pl.medico||[]).length) o+=`<div class="card stack-s"><h3>Para conversar com o médico</h3><ul style="margin:0;padding-left:18px">${pl.medico.map(x=>`<li>${h(x)}</li>`).join('')}</ul></div>`;
   o+=`<div class="grid2"><button class="btn" data-tab="treino">Ver treino</button><button class="btn ghost" data-tab="dieta">Ver alimentação</button></div>`;
   o+=`<button class="btn plain block" data-act="gerar"${S.busy?' disabled':''}>Gerar o plano de novo com os dados atuais</button>`;
@@ -1577,13 +1583,12 @@ function telaTreino(){
   const d=t.dias.find(x=>x.id===S.dia)||t.dias[0];
   const ex=d.exercicios||[]; const feitos=ex.filter((_,i)=>S.feitos[d.id+i]).length;
   let o=`<div class="stack-s" style="gap:2px"><h1>Treino</h1><span class="small muted" style="font-weight:600">Divisão ${h(t.divisao||t.dias.map(x=>x.id).join(''))}${t.semanas?' · '+h(t.semanas)+' semanas':''}</span></div>`;
-  o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}">${h(x.id)}</button>`).join('')}</div>`;
+  o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}${feitoHoje(x.id)?', feito hoje':''}">${h(x.id)}${feitoHoje(x.id)?' ✓':''}</button>`).join('')}</div>`;
   o+=`<div class="row between" style="align-items:flex-end"><div class="stack-s" style="gap:2px"><h2>Treino ${h(d.id)} · ${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
   if(t.orientacao) o+=`<p class="status ok">${h(t.orientacao)}</p>`;
   o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="exw"><div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span><span class="small" style="color:var(--accent-ink)">Ver como fazer</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div><button class="chip carga-btn" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}">${resumoCarga(e)}</button></div>`;}).join('')}</div>`;
-  const jaHoje=(S.registro.treinos||[]).some(x=>x.data===hoje());
-  o+=jaHoje?`<p class="status ok row">${ICON.check}<span>Treino de hoje registrado. Bom trabalho.</span></p>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
-  if(t.cardio) o+=`<div class="card stack-s"><h3>Aeróbico</h3><p class="small">${h(t.cardio)}</p></div>`;
+  o+=feitoHoje(d.id)?`<div class="stack-s"><p class="status ok row">${ICON.check}<span>Treino ${h(d.id)} feito hoje. Bom trabalho.</span></p><button class="btn plain block" data-act="desconcluir" data-dia="${h(d.id)}">Desfazer a conclusão do treino ${h(d.id)}</button></div>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
+  o+=cardioHtml(t.cardio);
   if(!t.dias.some(x=>(x.exercicios||[]).some(e=>e.alternativas&&e.alternativas.length))) o+=`<button class="btn ghost block" data-act="pedirAlternativas"${iaPronta()?'':' disabled'}>Pedir alternativas para cada exercício</button>`;
   o+=`<button class="btn ghost block" data-act="evolucao">Ver evolução das cargas</button>`;
   o+=`<button class="btn plain block" data-act="pedirMudancaTreino"${iaPronta()?'':' disabled'}>Pedir mudança no treino ao instrutor</button>`;
@@ -1784,6 +1789,51 @@ async function salvarCarga(){
   const maxAntes=Math.max(0,...antes.map(x=>Math.max(0,...x.s.map(y=>y.kg||0)))), maxHoje=Math.max(0,...s.map(y=>y.kg||0));
   fecharExercicio(); toast(!s.length?'Carga de hoje removida.':(maxAntes>0&&maxHoje>maxAntes?'Novo recorde: '+kgTxt(maxHoje)+' kg!':'Carga anotada.')); render();
 }
+// ===== Cardio feito nos dias livres (guardado em S.registro.cardios, dentro da cópia de segurança) =====
+const CARDIO_TIPOS=['Caminhada','Corrida','Esteira','Bicicleta','Bicicleta ergométrica','Elíptico','Natação','Remo','Pular corda','Outro'];
+const CARDIO_ESF=['Leve','Moderado','Forte'];
+const isoData=(d)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function cardiosSemana(){
+  const d=new Date(); const seg=new Date(d); seg.setDate(d.getDate()-((d.getDay()+6)%7)); const ini=isoData(seg), fim=hoje();
+  const l=(S.registro.cardios||[]).filter(x=>x.d>=ini&&x.d<=fim); return {n:l.length,min:l.reduce((t,x)=>t+(x.min||0),0)};
+}
+const cardioTxt=(x)=>[dataCurta(x.d),x.tipo,x.min+' min',x.km?kgTxt(x.km)+' km':'',x.esf||''].filter(Boolean).join(' · ');
+function cardioHtml(prescricao){
+  const w=cardiosSemana(), rec=(S.registro.cardios||[]).slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0).slice(0,5);
+  return `<div class="card stack-s"><h3>Cardio</h3>${prescricao?`<p class="small">${h(prescricao)}</p>`:''}<span class="small muted">Esta semana: ${w.n?w.n+(w.n===1?' sessão':' sessões')+' · '+w.min+' min':'nenhum cardio anotado'}</span><button class="btn ghost block" data-act="cardioNovo">Anotar cardio</button>${rec.length?`<div class="stack-s" style="gap:4px"><span class="small muted" style="font-weight:600">Últimos registros</span>${rec.map(x=>`<div class="row between" style="gap:8px;align-items:center"><span class="small" style="min-width:0">${h(cardioTxt(x))}</span><button class="chip" style="min-height:44px;flex:none" data-act="cardioDel" data-id="${h(x.id)}" aria-label="Remover cardio: ${h(cardioTxt(x))}">Remover</button></div>`).join('')}</div>`:''}</div>`;
+}
+function abrirCardio(foco){
+  fecharExercicio(); EX_FOCO=foco||null;
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><h2 id="exmTit">Anotar cardio</h2><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
+    <label class="f">Tipo<select id="cdTipo">${CARDIO_TIPOS.map(t=>`<option>${h(t)}</option>`).join('')}</select></label>
+    <label class="f">Data<input id="cdData" type="date" value="${hoje()}" max="${hoje()}"></label>
+    <div class="grid2"><label class="f">Duração (minutos)<input id="cdMin" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="30"></label>
+    <label class="f">Distância (km, opcional)<input id="cdKm" type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder="3,5"></label></div>
+    <label class="f">Esforço (opcional)<select id="cdEsf"><option value="">Não informar</option>${CARDIO_ESF.map(t=>`<option>${h(t)}</option>`).join('')}</select></label>
+    <div id="cdErro" class="status bad row" role="alert" hidden></div>
+    <button type="button" class="btn block" data-act="cardioSalvar">Salvar cardio</button></div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden'; const p=document.getElementById('cdMin'); if(p) p.focus();
+}
+async function salvarCardio(){
+  const g=(id)=>document.getElementById(id); if(!g('cdMin')) return;
+  const erro=(t)=>{ const e=g('cdErro'); e.hidden=false; e.textContent=t; };
+  const min=parseInt(g('cdMin').value,10), kmTxt=g('cdKm').value.trim(), km=kmTxt?parseFloat(kmTxt.replace(',','.')):null, d=g('cdData').value;
+  if(!isFinite(min)||min<1||min>600) return erro('Digite a duração em minutos (de 1 a 600).');
+  if(km!==null&&(!isFinite(km)||km<0||km>500)) return erro('A distância precisa ser um número em km (ou deixe em branco).');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>hoje()) return erro('Escolha uma data de hoje ou de um dia que já passou.');
+  const x={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),d,tipo:g('cdTipo').value,min};
+  if(km) x.km=Math.round(km*100)/100; if(g('cdEsf').value) x.esf=g('cdEsf').value;
+  const lista=(S.registro.cardios||[]).concat([x]).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0).slice(-200);
+  S.registro=Object.assign({},S.registro,{cardios:lista}); await save('registro',S.registro);
+  fecharExercicio(); toast('Cardio anotado.'); render();
+}
+
+function cardiosParaIA(){
+  const lim=new Date(); lim.setDate(lim.getDate()-14); const ini=isoData(lim);
+  return (S.registro.cardios||[]).filter(x=>x.d>=ini).slice(-20).map(x=>({data:x.d,tipo:x.tipo,min:x.min,km:x.km,esforco:x.esf}));
+}
 // ===== Evolução das cargas =====
 function pontosCarga(ss){ return (ss||[]).map(x=>({d:x.d,max:Math.max(0,...x.s.map(y=>y.kg||0)),vol:x.s.reduce((t,y)=>t+(y.kg||0)*(y.r||0),0)})).filter(p=>p.max>0).sort((a,b)=>a.d<b.d?-1:1).slice(-12); }
 function resumoEvolucao(pts){
@@ -1865,15 +1915,30 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='cardioNovo'){ abrirCardio(t); }
+  else if(a==='cardioSalvar'){ await salvarCardio(); }
+  else if(a==='cardioDel'){ const l=(S.registro.cardios||[]).filter(x=>x.id!==t.dataset.id); S.registro=Object.assign({},S.registro,{cardios:l}); await save('registro',S.registro); toast('Cardio removido.'); render(); }
   else if(a==='evolucao'){ S.sub='evolucao'; render(); window.scrollTo(0,0); }
   else if(a==='carga'){ const e=exercicioPorChave(t.dataset.k); if(e) abrirCarga(e,t); }
   else if(a==='cargaMais'){ const l=document.getElementById('cgLista'); if(l&&l.children.length<12){ l.insertAdjacentHTML('beforeend',linhaCarga(l.children.length,'','','','')); const ins=l.querySelectorAll('input[data-c="kg"]'); ins[ins.length-1].focus(); } }
   else if(a==='cargaSalvar'){ await salvarCarga(); }
   else if(a==='fotoRemover'){ S.foto=null; await save('foto',null); atualizarFotoUI(); const mg=document.getElementById('pFotoMsg'); if(mg) mg.textContent='Foto removida.'; }
   else if(a==='feito'){S.feitos[t.dataset.k]=!S.feitos[t.dataset.k];lsSet('feitos',S.feitos);render();}
+  else if(a==='desconcluir'){
+    const lista=(S.registro.treinos||[]).filter(x=>!(x.data===hoje()&&x.dia===t.dataset.dia));
+    S.registro=Object.assign({},S.registro,{treinos:lista}); await save('registro',S.registro); toast('Conclusão do treino '+t.dataset.dia+' desfeita.'); render();
+  }
+  else if(a==='alertaOk'){
+    const al=((S.plano&&S.plano.alertas)||[])[+t.dataset.i]; if(al){
+      const ok=Object.assign({},S.registro.alertasOk), c=chaveAlerta(al);
+      if(ok[c]) delete ok[c]; else ok[c]=hoje();
+      S.registro=Object.assign({},S.registro,{alertasOk:ok}); await save('registro',S.registro); render();
+    }
+  }
   else if(a==='concluir'){
+    if(feitoHoje(t.dataset.dia)){ render(); return; }
     const lista=(S.registro.treinos||[]).concat([{data:hoje(),dia:t.dataset.dia}]).slice(-200);
-    S.registro=Object.assign({},S.registro,{treinos:lista}); S.feitos={}; lsSet('feitos',{}); S.dia=null; await save('registro',S.registro); toast('Treino registrado.'); render();
+    S.registro=Object.assign({},S.registro,{treinos:lista}); S.feitos={}; lsSet('feitos',{}); S.dia=t.dataset.dia; await save('registro',S.registro); toast('Treino '+t.dataset.dia+' registrado como feito hoje.'); render();
   }
   else if(a==='digitar'){S.sub='digitar';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='rmItem'){syncRev();S.rascunho.itens.splice(+t.dataset.ix,1);render();}
@@ -2084,7 +2149,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=22;
+const VERSAO_APP=25;
 function bioMotivo(){
   if(!window.isSecureContext) return 'o app não está num endereço seguro (https).';
   if(!window.PublicKeyCredential) return NATIVO?'o app Android não oferece, dentro dele, o recurso de digital do navegador.':'este navegador não oferece o recurso de digital.';
