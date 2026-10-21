@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Treino e Nutrição</title>
-<meta name="theme-color" content="#080A10">
+<meta name="theme-color" content="#EEF2FB">
+<script>(function(){try{var t=localStorage.getItem("tn_tema")||"claro";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"escuro":"claro";document.documentElement.setAttribute("data-tema",t==="escuro"?"escuro":"claro");var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==="escuro"?"#080A10":"#EEF2FB";}catch(e){}})();</script>
 <meta name="description" content="Treino e alimentação montados por IA a partir dos seus exames.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
@@ -13,25 +14,37 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Figtree:wght@400;500;600;700&display=swap">
 <style>
-html{-webkit-text-size-adjust:100%;color-scheme:dark}
+html{-webkit-text-size-adjust:100%}
 :root{padding-top:env(safe-area-inset-top,0px)}
 body{margin:0}
 img{max-width:100%}
 [hidden]{display:none!important}
 /* Visual escuro e enxuto: fundo grafite, uma cor forte (azul) usada num lugar só, o cartão do treino.
    Números condensados de placar. Cartões só onde há um objeto separado. */
-:root{
-  --bg:#080A10; --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.07); --line:rgba(255,255,255,.09); --solid:#11151D; --fg:#F2F5FB; --muted:#9AA5B8; --faint:#7A869A;
-  --accent:#4D7CFF; --accent-strong:#7B9DFF; --on-accent:#050D26; --accent-soft:rgba(77,124,255,.16); --accent-ink:#9DB6FF; --accent-line:rgba(77,124,255,.5);
-  --hero-a:#3050FF; --hero-b:#1A2599; --hero:#181D28; --on-hero:#F2F5FB; --hero-muted:#9AA5B8;
-  --warn-soft:#2E2312; --warn-ink:#FFC266; --bad-soft:#331718; --bad-ink:#FF8A8A; --info-soft:#221D38; --info-ink:#C2B5FF;
-  --carb:#B49CFF; --fat:#FFC266;
+:root,:root[data-tema="claro"]{
+  color-scheme:light;
+  --bg:#EEF2FB; --glow:rgba(92,134,242,.16); --nav-bg:rgba(255,255,255,.86); --scrim:rgba(20,30,60,.45);
+  --surface:rgba(255,255,255,.6); --surface-2:rgba(255,255,255,.78); --line:rgba(40,60,120,.12); --solid:#FFFFFF; --fg:#1B2440; --muted:#5B6A8E; --faint:#7482A6;
+  --accent:#4470E8; --accent-strong:#6B8FF3; --on-accent:#FFFFFF; --accent-soft:rgba(68,112,232,.14); --accent-ink:#2F52C4; --accent-line:rgba(68,112,232,.45);
+  --hero-a:#5A82F0; --hero-b:#3F63DE; --hero:#FFFFFF; --on-hero:#1B2440; --hero-muted:#5B6A8E;
+  --warn-soft:#FFF1D6; --warn-ink:#8A5300; --bad-soft:#FDE4E4; --bad-ink:#B3261E; --info-soft:#E9E6FB; --info-ink:#4B3FA8;
+  --carb:#7B5FE0; --fat:#C98400;
   --display:'Archivo', 'Arial Narrow', system-ui, sans-serif;
   --body:'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --r-card:24px; --r-ctl:14px;
 }
+:root[data-tema="escuro"]{
+  color-scheme:dark;
+  --bg:#080A10; --glow:rgba(77,124,255,.20); --nav-bg:rgba(8,10,16,.92); --scrim:rgba(0,0,0,.72);
+  --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.07); --line:rgba(255,255,255,.09); --solid:#11151D; --fg:#F2F5FB; --muted:#9AA5B8; --faint:#7A869A;
+  --accent:#5C86F2; --accent-strong:#7B9DFF; --on-accent:#050D26; --accent-soft:rgba(92,134,242,.18); --accent-ink:#9DB6FF; --accent-line:rgba(92,134,242,.5);
+  --hero-a:#4565F0; --hero-b:#2A3AAE; --hero:#181D28; --on-hero:#F2F5FB; --hero-muted:#9AA5B8;
+  --warn-soft:#2E2312; --warn-ink:#FFC266; --bad-soft:#331718; --bad-ink:#FF8A8A; --info-soft:#221D38; --info-ink:#C2B5FF;
+  --carb:#B49CFF; --fat:#FFC266;
+}
+
 html,body{height:100%}
-body{background:radial-gradient(120% 55% at 50% -8%,rgba(77,124,255,.20),transparent 70%) no-repeat,var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(120% 55% at 50% -8%,var(--glow),transparent 70%) no-repeat,var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
 ::selection{background:var(--accent);color:var(--on-accent)}
 #app{max-width:540px;margin:0 auto;padding-inline:16px;padding-block:20px calc(104px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
@@ -90,7 +103,7 @@ textarea{min-height:110px;resize:vertical}
 .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
 .cg-linha{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
 .cg-linha input{width:100%;min-height:44px}
-.exm{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
+.exm{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
 .exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--solid);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
 .exm-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exm-imgs img{width:100%;height:auto;border-radius:12px;background:#fff;display:block}
 .ex.feito .txt strong{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--faint)}
@@ -114,7 +127,7 @@ details summary::-webkit-details-marker{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.spinner{animation-duration:3s} #app.entra{animation:none} .btn,.check{transition:none}}
 .table-wrap{overflow-x:auto}
-nav.bottom{position:fixed;left:0;right:0;bottom:0;background:rgba(8,10,16,.92);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;background:var(--nav-bg);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
 nav.bottom .in{max-width:540px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
 nav.bottom button{background:none;border:0;font:inherit;font-size:11px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;padding:0;cursor:pointer;min-height:56px}
 nav.bottom button .bar{display:none}
@@ -124,7 +137,7 @@ nav.bottom button[aria-current="page"] svg{background:var(--accent-soft);color:v
 .eyebrow{font-size:12px;font-weight:600;color:var(--muted)}
 .hero{position:relative;background:linear-gradient(155deg,var(--hero-a),var(--hero-b));color:#fff;border-radius:28px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
 .hero h2{font-size:22px}
-.hero .sub{color:rgba(255,255,255,.88);font-size:14px}
+.hero .sub{color:rgba(255,255,255,.95);font-size:14px}
 .hero .grande{font-family:var(--display);font-stretch:75%;font-weight:850;font-size:46px;line-height:.95;letter-spacing:-.01em;text-transform:uppercase}
 .hero-tit{font-weight:700;font-size:17px}
 .hero .btn{background:#fff;color:#0E1860}
@@ -212,6 +225,13 @@ const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7)
 const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto','fotosCorpo'];
 const ITER=310000;
 const COFRE={key:null, mestra:null, cache:{}, fila:Promise.resolve()};
+const TEMAS=[['claro','Claro'],['escuro','Escuro'],['auto','Automático']];
+const temaPref=()=>{ try{ const t=localStorage.getItem('tn_tema'); return TEMAS.some(x=>x[0]===t)?t:'claro'; }catch(e){ return 'claro'; } };
+function aplicarTema(){
+  const pref=temaPref(); const t=pref==='auto'?(matchMedia('(prefers-color-scheme: dark)').matches?'escuro':'claro'):pref;
+  document.documentElement.setAttribute('data-tema',t); const m=document.querySelector('meta[name="theme-color"]'); if(m) m.content=t==='escuro'?'#080A10':'#EEF2FB';
+}
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{ if(temaPref()==='auto') aplicarTema(); }); }catch(e){}
 const rawGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
 const rawSet=(k,v)=>{localStorage.setItem('tn:'+k,JSON.stringify(v));};
 const rawDel=(k)=>{try{localStorage.removeItem('tn:'+k);}catch(e){}};
@@ -1354,6 +1374,7 @@ function telaPerfil(){
     ${!novo&&S.plano?'<p class="note">Mudou objetivo, dias ou tempo? Depois de salvar, gere o plano de novo na tela inicial.</p>':''}
   </form>
   ${!novo?`<div class="card stack"><h3>Inteligência artificial</h3><p class="small muted">${iaPronta()?Object.entries(TAREFAS).map(([t,n])=>h(n)+': '+h(PROV[iaDaTarefa(t)].nome.split(' ').pop())).join(' · ')+(comChave().length>1&&S.cfg.reserva!==false?'. Uma cobre a outra se falhar.':''):'Nenhuma IA configurada.'}</p><button class="btn ghost block" data-act="config">Configurar IA</button></div>
+  <div class="card stack"><h3>Aparência</h3><div class="chips" role="group" aria-label="Tema do app">${TEMAS.map(x=>`<button type="button" class="chip" aria-pressed="${temaPref()===x[0]}" data-act="tema" data-t="${x[0]}">${x[1]}</button>`).join('')}</div><p class="small muted">Automático segue o tema do celular.</p></div>
   <div class="card stack"><h3>Senha e recuperação</h3><p class="small muted">Versão ${VERSAO_APP}. O app pede a senha ao abrir e depois de 15 minutos fora dele.${(rawGet('cofre')||{}).email?' E-mail de recuperação: '+h(mascarar(rawGet('cofre').email))+'.':' Nenhum e-mail de recuperação cadastrado.'}</p>
   <div class="grid2"><button class="btn ghost" data-act="trocarSenha">Trocar senha</button><button class="btn ghost" data-act="bloquear">Bloquear agora</button></div>
   <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button>
@@ -2013,6 +2034,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='tema'){ try{ localStorage.setItem('tn_tema',t.dataset.t); }catch(e){} aplicarTema(); render(); }
   else if(a==='fotoCorpoVer'){ abrirFotoCorpo(t.dataset.id); }
   else if(a==='fotoCorpoDel'){ S.fotosCorpo=(S.fotosCorpo||[]).filter(x=>x.id!==t.dataset.id); await save('fotosCorpo',S.fotosCorpo); fecharExercicio(); toast('Foto apagada.'); render(); }
   else if(a==='apkDepois'){ S.apkOculto=true; render(); }
@@ -2252,7 +2274,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=28;
+const VERSAO_APP=29;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
