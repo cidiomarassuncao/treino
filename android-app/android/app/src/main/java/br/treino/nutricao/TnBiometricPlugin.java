@@ -1,5 +1,6 @@
 package br.treino.nutricao;
 
+import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
@@ -9,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.pm.PackageInfoCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -35,6 +37,20 @@ public class TnBiometricPlugin extends Plugin {
 
     private interface Concluir {
         void ok(Cipher cipher) throws Exception;
+    }
+
+    /** Número da versão instalada do app (o mesmo do aviso de atualização). */
+    @PluginMethod
+    public void appVersion(PluginCall call) {
+        try {
+            PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            JSObject o = new JSObject();
+            o.put("codigo", (int) PackageInfoCompat.getLongVersionCode(info));
+            o.put("nome", info.versionName);
+            call.resolve(o);
+        } catch (Exception e) {
+            call.reject("Não consegui ler a versão do app.", "ERRO_VERSAO");
+        }
     }
 
     @PluginMethod

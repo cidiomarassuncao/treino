@@ -21,7 +21,7 @@ img{max-width:100%}
 /* Visual escuro e enxuto: fundo grafite, uma cor forte (azul) usada num lugar só, o cartão do treino.
    Números condensados de placar. Cartões só onde há um objeto separado. */
 :root{
-  --bg:#080A10; --surface:#11151D; --surface-2:#181D28; --line:#222938; --fg:#F2F5FB; --muted:#9AA5B8; --faint:#7A869A;
+  --bg:#080A10; --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.07); --line:rgba(255,255,255,.09); --solid:#11151D; --fg:#F2F5FB; --muted:#9AA5B8; --faint:#7A869A;
   --accent:#4D7CFF; --accent-strong:#7B9DFF; --on-accent:#050D26; --accent-soft:rgba(77,124,255,.16); --accent-ink:#9DB6FF; --accent-line:rgba(77,124,255,.5);
   --hero-a:#3050FF; --hero-b:#1A2599; --hero:#181D28; --on-hero:#F2F5FB; --hero-muted:#9AA5B8;
   --warn-soft:#2E2312; --warn-ink:#FFC266; --bad-soft:#331718; --bad-ink:#FF8A8A; --info-soft:#221D38; --info-ink:#C2B5FF;
@@ -31,7 +31,7 @@ img{max-width:100%}
   --r-card:24px; --r-ctl:14px;
 }
 html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(120% 55% at 50% -8%,rgba(77,124,255,.20),transparent 70%) no-repeat,var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}
 ::selection{background:var(--accent);color:var(--on-accent)}
 #app{max-width:540px;margin:0 auto;padding-inline:16px;padding-block:20px calc(104px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
@@ -91,7 +91,7 @@ textarea{min-height:110px;resize:vertical}
 .cg-linha{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
 .cg-linha input{width:100%;min-height:44px}
 .exm{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
-.exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--solid);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
 .exm-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exm-imgs img{width:100%;height:auto;border-radius:12px;background:#fff;display:block}
 .ex.feito .txt strong{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--faint)}
 .ex .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -141,7 +141,9 @@ nav.bottom button[aria-current="page"] svg{background:var(--accent-soft);color:v
 .avatar{width:48px;height:48px;border-radius:50%;border:2px solid var(--accent-line);background:var(--surface-2);overflow:hidden;padding:0;display:grid;place-items:center;color:var(--muted);cursor:pointer;flex:none}
 .sec{font-family:var(--body);font-stretch:100%;font-size:16px;font-weight:700;letter-spacing:0}
 .dias{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
-.dia{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 6px;border-radius:16px;background:var(--surface);min-height:74px}
+.dias li{min-width:0}
+.dia{width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 6px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;cursor:pointer;min-height:74px}
+.dia[aria-pressed="true"]{outline:2px solid var(--accent-line);outline-offset:1px}
 .dia .dn{font-size:11px;font-weight:600;color:var(--muted)}
 .dia .dd{font-family:var(--display);font-weight:800;font-size:19px;line-height:1.1;font-variant-numeric:tabular-nums}
 .dia .dm{height:16px;display:flex;align-items:center;justify-content:center;gap:3px;color:var(--accent-ink)}
@@ -161,6 +163,9 @@ nav.bottom button[aria-current="page"] svg{background:var(--accent-soft);color:v
 .ex .txt strong .cv{color:var(--faint);font-weight:400}
 .carga-btn{min-height:44px;min-width:64px;padding:0 12px;border-radius:14px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:inherit;font-size:14px;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums}
 .carga-btn.vazio{color:var(--muted);font-weight:600;border-style:dashed}
+.fc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fc-th{display:flex;flex-direction:column;gap:4px;padding:0;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;cursor:pointer;text-align:left;min-width:0}
+.fc-th img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;background:var(--surface-2)}
 .note{font-size:12px;color:var(--muted);line-height:1.45}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -204,7 +209,7 @@ const fmtData = (iso)=>{if(!iso)return '';const p=String(iso).split('-');if(p.le
 const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 /* ---------- cofre: dados criptografados (AES-GCM) com uma chave mestra.
    A chave mestra fica guardada duas vezes: travada pela senha e travada pelo código de recuperação. ---------- */
-const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto'];
+const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto','fotosCorpo'];
 const ITER=310000;
 const COFRE={key:null, mestra:null, cache:{}, fila:Promise.resolve()};
 const rawGet=(k)=>{try{const v=localStorage.getItem('tn:'+k);return v?JSON.parse(v):null;}catch(e){return null;}};
@@ -1307,7 +1312,7 @@ function header(titulo, voltar){
   return `<div class="row" style="gap:4px">${voltar?`<button class="iconbtn" style="border:0;background:none;margin-left:-10px" data-act="voltar" aria-label="Voltar">${ICON.back}</button>`:''}<h1 style="font-size:${voltar?22:28}px;flex:1">${h(titulo)}</h1></div>`;
 }
 function statusBox(){
-  let o='';
+  let o=avisoApk();
   if(S.busy) o+=`<div class="status info row" role="status"><span class="spinner" aria-hidden="true"></span><span>${h(S.busy.txt)}</span></div>`;
   if(S.erro) o+=`<div class="status bad row" role="alert">${ICON.warn}<span style="flex:1">${h(S.erro)}</span><button class="iconbtn" style="width:36px;height:36px;background:transparent;border:0;color:inherit" data-act="fecharErro" aria-label="Fechar aviso">×</button></div>`;
   return o;
@@ -1385,7 +1390,7 @@ function telaConfig(){
 
 function telaSenha(){
   const L=S.lock; const espera=Math.max(0,Math.ceil(((S.bloqAte||0)-Date.now())/1000));
-  const avisos=`${S.erro?`<div class="status bad row" role="alert">${ICON.warn}<span>${h(S.erro)}</span></div>`:''}${S.busy?`<div class="status info row" role="status"><span class="spinner" aria-hidden="true"></span><span>${h(S.busy.txt)}</span></div>`:''}`;
+  const avisos=`${avisoApk()}${S.erro?`<div class="status bad row" role="alert">${ICON.warn}<span>${h(S.erro)}</span></div>`:''}${S.busy?`<div class="status info row" role="status"><span class="spinner" aria-hidden="true"></span><span>${h(S.busy.txt)}</span></div>`:''}`;
   const mostrar='<label class="row small" style="gap:8px;min-height:44px"><input class="mostrar" type="checkbox" style="width:22px;min-height:22px"> Mostrar senha</label>';
   if(L==='semCripto') return `<div class="stack" style="padding-top:40px"><span class="eyebrow">Treino e Nutrição</span><h1>Abra pelo endereço seguro</h1><p class="muted">A proteção por senha só funciona no endereço que começa com https://. Abra o app pelo link do GitHub Pages.</p></div>`;
   if(L==='codigo') return telaCodigo(false);
@@ -1462,9 +1467,21 @@ const feitoHoje=(id)=>(S.registro.treinos||[]).some(x=>x.data===hoje()&&x.dia===
 const chaveAlerta=(a)=>semAcento((a.titulo||'')+'|'+(a.texto||'')).replace(/\s+/g,' ').trim();
 const alertaVerificado=(a)=>((S.registro.alertasOk||{})[chaveAlerta(a)])||null;
 function proximoDia(){
-  const dias=S.plano.treino.dias; const n=(S.registro.treinos||[]).length; return dias[n%dias.length];
+  // o próximo é o seguinte ao último treino registrado (e não uma contagem de registros, que errava com registros extras)
+  const dias=S.plano.treino.dias, tr=S.registro.treinos||[]; let u=null;
+  for(const t of tr) if(!u||String(t.data)>=String(u.data)) u=t;
+  const i=u?dias.findIndex(d=>d.id===u.dia):-1;
+  return i>=0?dias[(i+1)%dias.length]:dias[tr.length%dias.length];
 }
 
+function detalheDia(iso){
+  const dt=new Date(iso+'T12:00'); const nome=dt.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  const tr=(S.registro.treinos||[]).filter(x=>x.data===iso), cd=(S.registro.cardios||[]).filter(x=>x.d===iso);
+  const dias=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[];
+  const lin=tr.map(t=>{ const d=dias.find(x=>x.id===t.dia); return `<div class="row between" style="gap:8px"><span><strong>Treino ${h(t.dia)}</strong>${d?' · '+h(d.titulo):''}</span><button class="chip" style="min-height:44px;flex:none;padding:0 12px" data-act="regRem" data-d="${h(iso)}" data-dia="${h(t.dia)}" aria-label="Remover o registro do treino ${h(t.dia)} deste dia">Remover</button></div>`; }).join('')
+    +cd.map(c=>`<span class="small">Cardio: ${h(cardioTxt(c))}</span>`).join('');
+  return `<div class="card stack-s" role="status"><span class="small muted" style="font-weight:600">${h(nome.charAt(0).toUpperCase()+nome.slice(1))}</span>${lin||'<span class="small muted">Nenhum treino ou cardio registrado neste dia.</span>'}</div>`;
+}
 function faixaSemana(){
   const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
   const feitos=new Set((S.registro.treinos||[]).map(t=>t.data));
@@ -1473,7 +1490,7 @@ function faixaSemana(){
   const itens=nomes.map((n,i)=>{
     const x=new Date(seg); x.setDate(seg.getDate()+i); const iso=isoData(x); const ok=feitos.has(iso), cd=cardio[iso]||0; if(ok) c++; cm+=cd;
     const estado=[ok?'treino feito':'',cd?'cardio, '+cd+' minutos':''].filter(Boolean).join(', ')||'sem registro';
-    return `<li class="dia${i===dow?' hoje':''}${ok?' feito':''}" aria-label="${n} ${x.getDate()}: ${estado}${i===dow?' (hoje)':''}"><span class="dn">${n}</span><span class="dd">${x.getDate()}</span><span class="dm" aria-hidden="true">${ok?ICON.check.replace(/20/g,'14'):''}${cd?'<i class="pt"></i>':''}</span></li>`;
+    return `<li><button type="button" class="dia${i===dow?' hoje':''}${ok?' feito':''}" data-act="diaSemana" data-d="${iso}" aria-pressed="${S.diaSel===iso}" aria-label="${n} ${x.getDate()}: ${estado}${i===dow?' (hoje)':''}"><span class="dn">${n}</span><span class="dd">${x.getDate()}</span><span class="dm" aria-hidden="true">${ok?ICON.check.replace(/20/g,'14'):''}${cd?'<i class="pt"></i>':''}</span></button></li>`;
   }).join('');
   return {html:`<ol class="dias">${itens}</ol>`,c,cm};
 }
@@ -1492,7 +1509,7 @@ function telaInicio(){
   }
   const pl=S.plano; const prox=proximoDia(); const w=faixaSemana(); const recado=recadoRecuperacao();
   const ex=prox.exercicios||[]; const feitoAlgum=(S.registro.treinos||[]).some(x=>x.data===hoje());
-  o+=`<section class="stack-s" aria-label="Esta semana"><div class="row between"><h2 class="sec">Esta semana</h2><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos${w.cm?' · '+w.cm+' min de cardio':''}</span></div>${w.html}</section>`;
+  o+=`<section class="stack-s" aria-label="Esta semana"><div class="row between"><h2 class="sec">Esta semana</h2><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos${w.cm?' · '+w.cm+' min de cardio':''}</span></div>${w.html}${S.diaSel?detalheDia(S.diaSel):''}</section>`;
   o+=`<section class="hero" aria-labelledby="hTreino"><div class="stack-s" style="gap:2px"><span class="sub">${feitoAlgum?'Treino de hoje concluído. Próximo':'Próximo treino'}</span><h2 id="hTreino" class="grande">Treino ${h(prox.id)}</h2><span class="hero-tit">${h(prox.titulo)}</span></div>
     ${ex.length?`<ul class="prev">${ex.slice(0,3).map(e=>`<li><span>${h(e.nome)}</span><b>${h(e.series)} × ${h(e.reps)}</b></li>`).join('')}</ul>`:''}
     <span class="sub">${ex.length>3?'+ '+(ex.length-3)+' exercícios · ':''}cerca de ${h(prox.duracao_min||S.perfil.minutos)} min</span>
@@ -1549,6 +1566,7 @@ function telaExames(){
     ${podeImg?`<label class="btn block" for="fArq" style="cursor:pointer">${ICON.up}Foto ou PDF do laudo</label><input id="fArq" class="sr" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
     <p class="note">Até ${MAX_PAGINAS} páginas por laudo, em PDF ou várias fotos de uma vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
     <button class="btn ghost block" data-act="digitar"${S.busy?' disabled':''}>Digitar os valores</button></div>`;
+  o+=cartaoFotosCorpo();
   if(!S.exames.length){o+=`<div class="card stack-s"><h3>Nenhum exame ainda</h3><p class="small muted">Comece pela bioimpedância mais recente e pelo último exame de sangue. O avaliador compara os valores com as referências do próprio laudo.</p></div>`;return o;}
   const grupos=GRUPOS.map(g=>({...g,lista:S.exames.filter(e=>grupoDe(e)===g.id).sort((x,y)=>String(y.data).localeCompare(String(x.data)))})).filter(g=>g.lista.length);
   const filtro=grupos.some(g=>g.id===S.filtroEx)?S.filtroEx:'todos';
@@ -1854,6 +1872,66 @@ function cardiosParaIA(){
   const lim=new Date(); lim.setDate(lim.getDate()-14); const ini=isoData(lim);
   return (S.registro.cardios||[]).filter(x=>x.d>=ini).slice(-20).map(x=>({data:x.d,tipo:x.tipo,min:x.min,km:x.km,esforco:x.esf}));
 }
+// ===== Fotos corporais (evolução estética): ficam só neste aparelho, criptografadas, e nunca vão para a IA =====
+const FC_POS=['Frente','Lado','Costas'], FC_MAX=30;
+async function prepararFotoCorpo(file){
+  if(!file||!/^image\//.test(file.type||'')) throw new Error('tipo');
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,err)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=()=>err(new Error('img')); i.src=url; });
+    const L=720, w=img.naturalWidth, a=img.naturalHeight; if(!w||!a) throw new Error('vazia');
+    const f=Math.min(1,L/Math.max(w,a)), c=document.createElement('canvas'); c.width=Math.round(w*f); c.height=Math.round(a*f);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); return c.toDataURL('image/jpeg',.72);
+  } finally { URL.revokeObjectURL(url); }
+}
+const dataBR=(d)=>String(d).slice(8,10)+'/'+String(d).slice(5,7)+'/'+String(d).slice(2,4);
+function cartaoFotosCorpo(){
+  const l=(S.fotosCorpo||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  const comp=FC_POS.map(pos=>{ const f=l.filter(x=>x.pos===pos); return f.length>1?{pos,a:f[0],b:f[f.length-1]}:null; }).filter(Boolean);
+  const mini=(x)=>`<button class="fc-th" data-act="fotoCorpoVer" data-id="${h(x.id)}" aria-label="Ver foto de ${h(x.pos)} de ${h(dataBR(x.d))}"><img src="${x.img}" alt="" loading="lazy"><span>${h(x.pos)} · ${h(dataBR(x.d))}</span></button>`;
+  return `<div class="card stack"><div class="stack-s" style="gap:2px"><h3>Fotos corporais</h3><span class="small muted">Acompanhe a evolução estética. As fotos ficam só neste celular, protegidas, e não são enviadas à IA.</span></div>
+    <div class="grid2"><label class="f">Posição<select id="fcPos">${FC_POS.map(p=>`<option>${p}</option>`).join('')}</select></label><label class="f">Data<input id="fcData" type="date" value="${hoje()}" max="${hoje()}"></label></div>
+    <label class="btn block" for="fFotoCorpo" style="cursor:pointer">${ICON.up}Adicionar foto</label><input id="fFotoCorpo" class="sr" type="file" accept="image/*"><span id="fcMsg" class="small muted" role="status"></span>
+    ${comp.map(c=>`<div class="stack-s"><span class="small" style="font-weight:700">${h(c.pos)}: ${h(dataBR(c.a.d))} → ${h(dataBR(c.b.d))}</span><div class="grid2"><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.a.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.a.d))}"><img src="${c.a.img}" alt="Primeira foto de ${h(c.pos)}"></button><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.b.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.b.d))}"><img src="${c.b.img}" alt="Foto mais recente de ${h(c.pos)}"></button></div></div>`).join('')}
+    ${l.length?`<div class="stack-s"><span class="small muted" style="font-weight:600">Todas as fotos (${l.length})</span><div class="fc-grid">${l.slice().reverse().map(mini).join('')}</div></div>`:''}</div>`;
+}
+function abrirFotoCorpo(id){
+  const x=(S.fotosCorpo||[]).find(f=>f.id===id); if(!x) return; fecharExercicio();
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="gap:10px"><h2 id="exmTit">${h(x.pos)} · ${h(dataBR(x.d))}</h2><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div><img src="${x.img}" alt="Foto de ${h(x.pos)} de ${h(dataBR(x.d))}" style="width:100%;height:auto;border-radius:14px;display:block"><button class="btn danger block" data-act="fotoCorpoDel" data-id="${h(x.id)}">Apagar esta foto</button></div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden'; const b=document.getElementById('exmX'); if(b) b.focus();
+}
+document.addEventListener('change',async(ev)=>{
+  const t=ev.target; if(!t||t.id!=='fFotoCorpo') return; const f=t.files&&t.files[0]; if(!f) return;
+  const msg=document.getElementById('fcMsg'), pos=(document.getElementById('fcPos')||{}).value||'Frente', d=(document.getElementById('fcData')||{}).value||hoje();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>hoje()){ if(msg) msg.textContent='Escolha uma data de hoje ou de um dia que já passou.'; t.value=''; return; }
+  if((S.fotosCorpo||[]).length>=FC_MAX){ if(msg) msg.textContent='Limite de '+FC_MAX+' fotos. Apague uma antiga para adicionar outra.'; t.value=''; return; }
+  try{ const img=await prepararFotoCorpo(f); S.fotosCorpo=(S.fotosCorpo||[]).concat([{id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),d,pos,img}]); await save('fotosCorpo',S.fotosCorpo); toast('Foto adicionada.'); render(); }
+  catch(e){ if(msg) msg.textContent='Não consegui abrir essa imagem. Tente outra foto (JPG ou PNG).'; }
+  t.value='';
+});
+
+// ===== Aviso de nova versão do app Android: compara com a última versão publicada em Releases =====
+function repoGithub(){
+  const m=location.hostname.match(/^([^.]+)\.github\.io$/); if(!m) return null;
+  const seg=location.pathname.split('/').filter(Boolean)[0]; return {dono:m[1],repo:seg&&!/\.html?$/.test(seg)?seg:m[1]+'.github.io'};
+}
+async function versaoInstaladaApk(){
+  try{ if(bioNativo()){ const r=await bioNat('appVersion'); if(r&&r.codigo) return +r.codigo; } }catch(e){}
+  return 0; // app antigo, sem como informar a versão
+}
+async function verificarAtualizacaoApk(){
+  if(!NATIVO||S.apkNovo||!navigator.onLine) return; const rp=repoGithub(); if(!rp) return;
+  try{
+    const r=await fetch('https://api.github.com/repos/'+rp.dono+'/'+rp.repo+'/releases/latest',{headers:{Accept:'application/vnd.github+json'}}); if(!r.ok) return;
+    const j=await r.json(), n=parseInt(String(j.tag_name||'').replace(/\D/g,''),10); if(!n) return;
+    const atual=await versaoInstaladaApk(); if(n<=atual) return;
+    const as=(j.assets||[]).find(a=>/\.apk$/i.test(a.name||'')); S.apkNovo={n,url:(as&&as.browser_download_url)||j.html_url,nome:j.name||('versão '+n)}; render();
+  }catch(e){}
+}
+const avisoApk=()=>S.apkNovo&&!S.apkOculto?`<div class="status info stack-s" role="status"><strong>Nova versão do app disponível</strong><span class="small">Baixe e instale por cima do app atual. Seus dados continuam.</span><div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn" style="min-height:44px;text-decoration:none" href="${h(S.apkNovo.url)}" target="_blank" rel="noopener">Baixar nova versão</a><button class="btn plain" style="min-height:44px" data-act="apkDepois">Depois</button></div></div>`:'';
+
 // ===== Evolução das cargas =====
 function pontosCarga(ss){ return (ss||[]).map(x=>({d:x.d,max:Math.max(0,...x.s.map(y=>y.kg||0)),vol:x.s.reduce((t,y)=>t+(y.kg||0)*(y.r||0),0)})).filter(p=>p.max>0).sort((a,b)=>a.d<b.d?-1:1).slice(-12); }
 function resumoEvolucao(pts){
@@ -1935,6 +2013,11 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='fotoCorpoVer'){ abrirFotoCorpo(t.dataset.id); }
+  else if(a==='fotoCorpoDel'){ S.fotosCorpo=(S.fotosCorpo||[]).filter(x=>x.id!==t.dataset.id); await save('fotosCorpo',S.fotosCorpo); fecharExercicio(); toast('Foto apagada.'); render(); }
+  else if(a==='apkDepois'){ S.apkOculto=true; render(); }
+  else if(a==='diaSemana'){ S.diaSel=(S.diaSel===t.dataset.d)?null:t.dataset.d; render(); }
+  else if(a==='regRem'){ const l=(S.registro.treinos||[]).slice(); const ix=l.findIndex(x=>x.data===t.dataset.d&&x.dia===t.dataset.dia); if(ix>=0){ l.splice(ix,1); S.registro=Object.assign({},S.registro,{treinos:l}); await save('registro',S.registro); toast('Registro removido.'); render(); } }
   else if(a==='cardioNovo'){ abrirCardio(t); }
   else if(a==='cardioSalvar'){ await salvarCardio(); }
   else if(a==='cardioDel'){ const l=(S.registro.cardios||[]).filter(x=>x.id!==t.dataset.id); S.registro=Object.assign({},S.registro,{cardios:l}); await save('registro',S.registro); toast('Cardio removido.'); render(); }
@@ -2015,7 +2098,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='lockVoltar'){S.lock='entrar';S.erro=null;render();}
   else if(a==='apagarTudo'){
     try{ Object.keys(localStorage).filter(k=>k.startsWith('tn:')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
-    fecharCofre(); Object.assign(S,{perfil:null,foto:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
+    fecharCofre(); Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
   }
   else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
   else if(a==='bioEntrar'){ await tentarDigital(false); }
@@ -2028,7 +2111,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
   else if(a==='exportar'){
-    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,exames:S.exames,plano:S.plano,registro:S.registro};
+    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,fotosCorpo:S.fotosCorpo||[],exames:S.exames,plano:S.plano,registro:S.registro};
     if(NATIVO){ try{ await navigator.clipboard.writeText(JSON.stringify(dados)); toast('Cópia copiada. Cole num e-mail ou no WhatsApp para você mesmo e guarde.'); }catch(e){ toast('Não consegui copiar. Faça a cópia pelo app no Chrome.'); } return; }
     const blob=new Blob([JSON.stringify(dados,null,1)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const ln=document.createElement('a'); ln.href=u; ln.download='treino-nutricao-'+hoje()+'.json';
@@ -2152,7 +2235,7 @@ document.addEventListener('change',(ev)=>{
       let d; try{d=JSON.parse(tx);}catch(e){toast('Esse arquivo não é uma cópia do app.');return;}
       if(!d||d.app!=='treino-nutricao'){toast('Esse arquivo não é uma cópia do app.');return;}
       S.perfil=d.perfil||S.perfil; S.exames=Array.isArray(d.exames)?d.exames:[]; S.plano=d.plano||null; S.registro=d.registro&&d.registro.treinos?d.registro:{treinos:[]}; S.foto=(typeof d.foto==='string'&&d.foto.startsWith('data:image/'))?d.foto:null;
-      await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro); await save('foto',S.foto);
+      await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro); await save('foto',S.foto); S.fotosCorpo=Array.isArray(d.fotosCorpo)?d.fotosCorpo.filter(x=>x&&typeof x.img==='string'&&x.img.startsWith('data:image/')).slice(0,FC_MAX):[]; await save('fotosCorpo',S.fotosCorpo);
       S.editPerfil=false; S.tab='inicio'; toast('Cópia restaurada.'); render();
     });
   }
@@ -2169,7 +2252,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=27;
+const VERSAO_APP=28;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
@@ -2227,14 +2310,14 @@ const autoDigital=()=>{ if(S.lock==='entrar'&&bioAtiva()&&bioDisponivel()) setTi
 function bloquear(){
   if(!COFRE.key) return;
   fecharCofre(); if(chatCtl) chatCtl.abort();
-  Object.assign(S,{perfil:null,foto:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
+  Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
   window.scrollTo(0,0); render();
 }
 
 async function carregarDados(){
   const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
   S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
-  S.foto=lsGet('foto')||null; S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
+  S.foto=lsGet('foto')||null; S.fotosCorpo=Array.isArray(lsGet('fotosCorpo'))?lsGet('fotosCorpo'):[]; S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
   if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
   S.saude=lsGet('saude');
   S.ready=true; render(); window.scrollTo(0,0);
@@ -2262,7 +2345,7 @@ async function boot(){
   } else {
     S.migrar=CHAVES.some(k=>rawGet(k)!==null); S.lock='criar';
   }
-  render(); setTimeout(()=>{const i=document.getElementById('sSenha');if(i)i.focus();},50); autoDigital();
+  render(); setTimeout(()=>{const i=document.getElementById('sSenha');if(i)i.focus();},50); autoDigital(); verificarAtualizacaoApk();
 }
 boot();
 })();
