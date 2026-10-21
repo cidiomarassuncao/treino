@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Treino e Nutrição</title>
-<meta name="theme-color" content="#0A0C10">
+<meta name="theme-color" content="#080A10">
 <meta name="description" content="Treino e alimentação montados por IA a partir dos seus exames.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
@@ -18,17 +18,17 @@ html{-webkit-text-size-adjust:100%;color-scheme:dark}
 body{margin:0}
 img{max-width:100%}
 [hidden]{display:none!important}
-/* Visual escuro esportivo, só um tema: grafite com viés azul, um azul elétrico de destaque,
-   títulos largos e números condensados de placar. Cartões só onde há um objeto separado. */
+/* Visual escuro e enxuto: fundo grafite, uma cor forte (azul) usada num lugar só, o cartão do treino.
+   Números condensados de placar. Cartões só onde há um objeto separado. */
 :root{
-  --bg:#0A0C10; --surface:#13171D; --surface-2:#1A1F27; --line:#252C36; --fg:#EDF1F7; --muted:#98A2B3; --faint:#5E6878;
-  --accent:#3D9BFF; --accent-strong:#6BB4FF; --on-accent:#03101F; --accent-soft:rgba(61,155,255,.15); --accent-ink:#8CC4FF; --accent-line:rgba(61,155,255,.45);
-  --hero:#1A1F27; --on-hero:#EDF1F7; --hero-muted:#98A2B3;
+  --bg:#080A10; --surface:#11151D; --surface-2:#181D28; --line:#222938; --fg:#F2F5FB; --muted:#9AA5B8; --faint:#7A869A;
+  --accent:#4D7CFF; --accent-strong:#7B9DFF; --on-accent:#050D26; --accent-soft:rgba(77,124,255,.16); --accent-ink:#9DB6FF; --accent-line:rgba(77,124,255,.5);
+  --hero-a:#3050FF; --hero-b:#1A2599; --hero:#181D28; --on-hero:#F2F5FB; --hero-muted:#9AA5B8;
   --warn-soft:#2E2312; --warn-ink:#FFC266; --bad-soft:#331718; --bad-ink:#FF8A8A; --info-soft:#221D38; --info-ink:#C2B5FF;
   --carb:#B49CFF; --fat:#FFC266;
   --display:'Archivo', 'Arial Narrow', system-ui, sans-serif;
   --body:'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --r-card:20px; --r-ctl:14px;
+  --r-card:24px; --r-ctl:14px;
 }
 html,body{height:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
@@ -44,17 +44,11 @@ h3{font-size:15px;font-weight:700}
 p{margin:0}
 a{color:var(--accent-ink)}
 .muted{color:var(--muted)} .small{font-size:13px}
-.eyebrow{font-family:var(--display);font-stretch:112%;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .stack{display:flex;flex-direction:column;gap:12px} .stack-s{display:flex;flex-direction:column;gap:6px}
 .row{display:flex;align-items:center;gap:10px} .between{justify-content:space-between}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:16px}
-.hero{position:relative;overflow:hidden;background:var(--surface-2);color:var(--fg);border:1px solid var(--accent-line);border-radius:24px;padding:20px;display:flex;flex-direction:column;gap:14px}
-.hero::before{content:"";position:absolute;inset:auto -30% 55% auto;width:240px;height:240px;border-radius:50%;background:radial-gradient(closest-side,rgba(61,155,255,.22),transparent);pointer-events:none}
-.hero > *{position:relative}
-.hero .sub{color:var(--muted);font-size:14px}
-.hero .grande{font-family:var(--display);font-stretch:75%;font-weight:850;font-size:44px;line-height:.95;letter-spacing:-.01em;text-transform:uppercase}
 .dark{background:var(--surface-2);color:var(--on-hero);border:1px solid var(--line);border-radius:var(--r-card);padding:20px;display:flex;flex-direction:column;gap:8px}
 .dark .eyebrow{color:var(--accent-ink)}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -92,8 +86,6 @@ textarea{min-height:110px;resize:vertical}
 .chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
 .tabs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
 .tabs .chip{font-family:var(--display);font-stretch:75%;font-size:22px;font-weight:800;min-height:52px;border-radius:16px}
-.exw{display:flex;flex-direction:column;gap:6px}
-.carga-btn{align-self:flex-start;margin-left:46px;font-size:14px;color:var(--accent-ink)}
 .avatar-g{width:72px;height:72px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;color:var(--muted)}
 .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
 .cg-linha{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
@@ -101,22 +93,11 @@ textarea{min-height:110px;resize:vertical}
 .exm{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
 .exm-box{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
 .exm-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exm-imgs img{width:100%;height:auto;border-radius:12px;background:#fff;display:block}
-.ex{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:18px}
-.ex .exn{flex:none;width:34px;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:22px;color:var(--faint);text-align:center;font-variant-numeric:tabular-nums}
-.ex.feito .exn{color:var(--accent)}
 .ex.feito .txt strong{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--faint)}
 .ex .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .check{width:44px;height:44px;flex:none;border-radius:50%;border:1.5px solid var(--faint);background:transparent;color:var(--on-accent);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:transform .12s ease}
 .check:active{transform:scale(.9)}
 .check[aria-pressed="true"]{border-color:var(--accent);background:var(--accent)}
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;font-weight:600;color:var(--muted)}
-.dot{width:34px;height:34px;margin:6px auto 0;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px dashed var(--faint)}
-.dot.done{background:var(--accent);color:var(--on-accent);border:0}
-.cd{display:block;margin-top:4px;min-height:16px;font-size:11px;font-weight:700;color:var(--accent-ink)}
-.dot.today{border:2px solid var(--accent)}
-.anel{flex:none;display:grid;place-items:center;position:relative}
-.anel span{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:22px;line-height:1}
-.anel small{font-family:var(--body);font-stretch:100%;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
 .macro{display:flex;height:10px;border-radius:999px;overflow:hidden;gap:3px}
 .macro i{display:block;height:100%;border-radius:999px}
 .leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
@@ -133,13 +114,53 @@ details summary::-webkit-details-marker{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.spinner{animation-duration:3s} #app.entra{animation:none} .btn,.check{transition:none}}
 .table-wrap{overflow-x:auto}
-nav.bottom{position:fixed;left:0;right:0;bottom:0;background:rgba(13,16,21,.86);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;background:rgba(8,10,16,.92);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
 nav.bottom .in{max-width:540px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
 nav.bottom button{background:none;border:0;font:inherit;font-size:11px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;padding:0;cursor:pointer;min-height:56px}
 nav.bottom button .bar{display:none}
 nav.bottom button svg{box-sizing:content-box;padding:4px 18px;border-radius:999px;transition:background-color .2s ease}
 nav.bottom button[aria-current="page"]{color:var(--fg);font-weight:700}
 nav.bottom button[aria-current="page"] svg{background:var(--accent-soft);color:var(--accent)}
+.eyebrow{font-size:12px;font-weight:600;color:var(--muted)}
+.hero{position:relative;background:linear-gradient(155deg,var(--hero-a),var(--hero-b));color:#fff;border-radius:28px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
+.hero h2{font-size:22px}
+.hero .sub{color:rgba(255,255,255,.88);font-size:14px}
+.hero .grande{font-family:var(--display);font-stretch:75%;font-weight:850;font-size:46px;line-height:.95;letter-spacing:-.01em;text-transform:uppercase}
+.hero-tit{font-weight:700;font-size:17px}
+.hero .btn{background:#fff;color:#0E1860}
+.hero .btn:hover{background:#E8EDFF}
+.hero .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.65)}
+.hero .btn.ghost:hover{background:rgba(255,255,255,.12)}
+.hero button:focus-visible,.hero a:focus-visible{outline-color:#fff}
+.prev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.prev li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.2);font-size:14px}
+.prev li span{min-width:0;overflow-wrap:anywhere}
+.prev li b{flex:none;font-variant-numeric:tabular-nums}
+.topo{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topo h1{font-size:24px}
+.avatar{width:48px;height:48px;border-radius:50%;border:2px solid var(--accent-line);background:var(--surface-2);overflow:hidden;padding:0;display:grid;place-items:center;color:var(--muted);cursor:pointer;flex:none}
+.sec{font-family:var(--body);font-stretch:100%;font-size:16px;font-weight:700;letter-spacing:0}
+.dias{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dia{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 6px;border-radius:16px;background:var(--surface);min-height:74px}
+.dia .dn{font-size:11px;font-weight:600;color:var(--muted)}
+.dia .dd{font-family:var(--display);font-weight:800;font-size:19px;line-height:1.1;font-variant-numeric:tabular-nums}
+.dia .dm{height:16px;display:flex;align-items:center;justify-content:center;gap:3px;color:var(--accent-ink)}
+.dia.feito{background:var(--accent-soft)}
+.dia.hoje{background:var(--accent)}
+.dia.hoje .dn,.dia.hoje .dd,.dia.hoje .dm{color:var(--on-accent)}
+.pt{display:block;width:6px;height:6px;border-radius:50%;background:currentColor}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .num{font-size:26px}
+.btn-li{background:none;border:0;border-bottom:1px solid var(--line);color:inherit;font:inherit;text-align:left;width:100%;cursor:pointer;min-height:56px}
+.btn-li svg{flex:none;color:var(--muted)}
+.btn-li:disabled{opacity:.45;cursor:default}
+.mais summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;font-weight:600;color:var(--accent-ink)}
+.mais summary::after{content:"+";font-size:22px;line-height:1}
+.mais[open] summary::after{content:"\2212"}
+.ex{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:20px}
+.ex .txt strong .cv{color:var(--faint);font-weight:400}
+.carga-btn{min-height:44px;min-width:64px;padding:0 12px;border-radius:14px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:inherit;font-size:14px;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums}
+.carga-btn.vazio{color:var(--muted);font-weight:600;border-style:dashed}
 .note{font-size:12px;color:var(--muted);line-height:1.45}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -633,23 +654,22 @@ function cartaoRelogio(){
   if(!NATIVO&&!S.saude) return '';
   const r=resumoSaude(); const sd=S.saude;
   const quando=sd&&sd.sincronizado?new Date(sd.sincronizado).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-  const botao=NATIVO?`<button class="btn ghost" style="min-height:40px;padding:0 14px" data-act="sincSaude"${S.saudeBusy?' disabled':''}>${S.saudeBusy?'Lendo…':'Sincronizar'}</button>`:'';
-  if(!r) return `<div class="card stack"><div class="row between"><h3>Relógio</h3>${botao}</div><p class="small muted">${NATIVO?'Toque em Sincronizar e permita o acesso ao Conexão Saúde para trazer sono, frequência cardíaca e passos do seu relógio.':'Os dados do relógio só são lidos no app Android.'}</p></div>`;
+  const botao=NATIVO?`<button class="btn ghost" style="min-height:44px;padding:0 16px;flex:none" data-act="sincSaude"${S.saudeBusy?' disabled':''}>${S.saudeBusy?'Lendo…':'Sincronizar'}</button>`:'';
+  if(!r) return `<div class="card stack"><div class="row between" style="gap:10px"><h3>Relógio</h3>${botao}</div><p class="small muted">${NATIVO?'Toque em Sincronizar e permita o acesso ao Conexão Saúde para trazer sono, frequência cardíaca e passos do seu relógio.':'Os dados do relógio só são lidos no app Android.'}</p></div>`;
   // barras de sono dos últimos 7 dias
   const dias=[]; for(let i=6;i>=0;i--){ const k=diaLocal(Date.now()-i*864e5); dias.push({k,min:(sd.dias[k]||{}).sono||0,lbl:['D','S','T','Q','Q','S','S'][new Date(k+'T12:00').getDay()]}); }
   const maxMin=Math.max(480,...dias.map(d=>d.min));
   const barras=`<div role="img" aria-label="Sono dos últimos 7 dias" style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:92px">${dias.map(d=>`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><span style="font-size:10px;color:var(--muted);white-space:nowrap">${d.min?hm(d.min):''}</span><div title="${hm(d.min)}" style="width:100%;max-width:22px;border-radius:6px;background:${d.min&&d.min<360?'var(--warn-ink)':'var(--accent)'};opacity:${d.min?1:.25};height:${d.min?Math.max(6,Math.round(d.min/maxMin*50)):4}px"></div><span style="font-size:11px;color:var(--muted)">${d.lbl}</span></div>`).join('')}</div>`;
   const n=r.ultimaNoite;
-  return `<div class="card stack"><div class="row between"><div class="stack-s" style="gap:0"><h3>Relógio</h3><span class="small muted">Atualizado ${h(quando)}</span></div>${botao}</div>
+  return `<div class="card stack"><div class="row between" style="gap:10px"><div class="stack-s" style="gap:0"><h3>Relógio</h3><span class="small muted">Atualizado ${h(quando)}</span></div>${botao}</div>
     <div class="grid3">
-      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Sono</span><span class="num" style="font-size:26px">${n?hm(n.minutos):'—'}</span><span class="small muted">${n&&n.cama>n.minutos?'dormido · '+hm(n.cama)+' na cama':'dormido'}</span><span class="small muted">média ${hm(r.sonoMedioMin)}</span></div>
-      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">FC repouso</span><span class="num" style="font-size:26px">${r.fcRepousoHoje||r.fcRepousoMedia||'—'}<small> bpm</small></span><span class="small muted">${r.fcRepousoMedia?(r.fcRepousoEstimada?'mín. do dia · média ':'média ')+r.fcRepousoMedia:'sem dados'}</span></div>
-      <div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">Passos</span><span class="num" style="font-size:26px">${r.passosHoje!=null?num(r.passosHoje):'—'}</span><span class="small muted">${r.passosMedia?'média '+num(r.passosMedia):'hoje'}</span></div>
+      <div class="stat"><span class="small muted">Sono</span><span class="num">${n?hm(n.minutos):'—'}</span><span class="small muted">${r.sonoMedioMin?'média '+hm(r.sonoMedioMin):'dormido'}</span></div>
+      <div class="stat"><span class="small muted">FC repouso</span><span class="num">${r.fcRepousoHoje||r.fcRepousoMedia||'—'}<small> bpm</small></span><span class="small muted">${r.fcRepousoMedia?'média '+r.fcRepousoMedia:'sem dados'}</span></div>
+      <div class="stat"><span class="small muted">Passos</span><span class="num">${r.passosHoje!=null?num(r.passosHoje):'—'}</span><span class="small muted">${r.passosMedia?'média '+num(r.passosMedia):'hoje'}</span></div>
     </div>
-    ${barras}
-    ${diagSaude(sd)}
-    ${n?`<p class="small muted">Última noite${n.ini&&n.fim?' ('+hhmm(n.ini)+' às '+hhmm(n.fim)+')':''}: dormido ${hm(n.minutos)}${n.cama>n.minutos?', mais '+hm(n.cama-n.minutos)+' acordado':''}. Profundo ${hm(n.profundo)} · REM ${hm(n.rem)} · leve ${hm(Math.max(0,n.minutos-n.profundo-n.rem))}${r.hrvMedia?' · HRV média '+r.hrvMedia+' ms':''}.</p>`:(r.hrvMedia?`<p class="small muted">HRV média ${r.hrvMedia} ms.</p>`:'')}
-  </div>`;
+    <details class="mais"><summary>Ver detalhes</summary><div class="stack" style="margin-top:12px">${barras}
+      ${n?`<p class="small muted">Última noite${n.ini&&n.fim?' ('+hhmm(n.ini)+' às '+hhmm(n.fim)+')':''}: dormido ${hm(n.minutos)}${n.cama>n.minutos?', mais '+hm(n.cama-n.minutos)+' acordado':''}. Profundo ${hm(n.profundo)} · REM ${hm(n.rem)} · leve ${hm(Math.max(0,n.minutos-n.profundo-n.rem))}${r.hrvMedia?' · HRV média '+r.hrvMedia+' ms':''}.</p>`:(r.hrvMedia?`<p class="small muted">HRV média ${r.hrvMedia} ms.</p>`:'')}
+      ${diagSaude(sd)}</div></details></div>`;
 }
 
 function contexto(){
@@ -1438,21 +1458,6 @@ function telaTrocaSenha(){
     <button class="btn block" type="submit"${S.busy?' disabled':''}>Trocar senha</button></form>`;
 }
 
-function anel(feitos,total,tam){
-  tam=tam||84; const r=(tam-10)/2, c=2*Math.PI*r, p=total?Math.min(1,feitos/total):0;
-  return `<div class="anel" style="width:${tam}px;height:${tam}px" role="img" aria-label="${feitos} de ${total} treinos nesta semana"><svg width="${tam}" height="${tam}" viewBox="0 0 ${tam} ${tam}" aria-hidden="true" style="transform:rotate(-90deg)"><circle cx="${tam/2}" cy="${tam/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="8"/><circle cx="${tam/2}" cy="${tam/2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(c*p).toFixed(1)} ${c.toFixed(1)}"/></svg><span>${feitos}/${total}<small>semana</small></span></div>`;
-}
-
-function semana(){
-  const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
-  const feitos=new Set((S.registro.treinos||[]).map(t=>t.data));
-  const cardioPorDia={}; let cmTot=0; for(const c of (S.registro.cardios||[])) cardioPorDia[c.d]=(cardioPorDia[c.d]||0)+(c.min||0);
-  const nomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']; let c=0;
-  const cells=nomes.map((n,i)=>{const x=new Date(seg);x.setDate(seg.getDate()+i);const iso=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
-    const ok=feitos.has(iso); if(ok)c++; const cm=cardioPorDia[iso]||0; cmTot+=cm; const t=i===dow;
-    return `<div><span${t?' style="color:var(--fg);font-weight:700"':''}>${t?'Hoje':n}</span><span class="dot${ok?' done':''}${t&&!ok?' today':''}" role="img" aria-label="${n}: ${ok?'treino feito':'sem treino registrado'}">${ok?ICON.check.replace(/20/g,'16'):''}</span><span class="cd"${cm?` role="img" aria-label="${n}: cardio, ${cm} minutos"`:' aria-hidden="true"'}>${cm?cm+"'":''}</span></div>`;}).join('');
-  return {cells,c,cm:cmTot};
-}
 const feitoHoje=(id)=>(S.registro.treinos||[]).some(x=>x.data===hoje()&&x.dia===id);
 const chaveAlerta=(a)=>semAcento((a.titulo||'')+'|'+(a.texto||'')).replace(/\s+/g,' ').trim();
 const alertaVerificado=(a)=>((S.registro.alertasOk||{})[chaveAlerta(a)])||null;
@@ -1460,27 +1465,42 @@ function proximoDia(){
   const dias=S.plano.treino.dias; const n=(S.registro.treinos||[]).length; return dias[n%dias.length];
 }
 
+function faixaSemana(){
+  const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
+  const feitos=new Set((S.registro.treinos||[]).map(t=>t.data));
+  const cardio={}; for(const c of (S.registro.cardios||[])) cardio[c.d]=(cardio[c.d]||0)+(c.min||0);
+  const nomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']; let c=0, cm=0;
+  const itens=nomes.map((n,i)=>{
+    const x=new Date(seg); x.setDate(seg.getDate()+i); const iso=isoData(x); const ok=feitos.has(iso), cd=cardio[iso]||0; if(ok) c++; cm+=cd;
+    const estado=[ok?'treino feito':'',cd?'cardio, '+cd+' minutos':''].filter(Boolean).join(', ')||'sem registro';
+    return `<li class="dia${i===dow?' hoje':''}${ok?' feito':''}" aria-label="${n} ${x.getDate()}: ${estado}${i===dow?' (hoje)':''}"><span class="dn">${n}</span><span class="dd">${x.getDate()}</span><span class="dm" aria-hidden="true">${ok?ICON.check.replace(/20/g,'14'):''}${cd?'<i class="pt"></i>':''}</span></li>`;
+  }).join('');
+  return {html:`<ol class="dias">${itens}</ol>`,c,cm};
+}
+
 function telaInicio(){
   const p=S.perfil; const nome=(p.nome||'').split(' ')[0];
   const dataTxt=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
-  let o=`<div class="row between"><div class="stack-s" style="gap:2px"><span class="small muted" style="font-weight:600">${h(dataTxt.charAt(0).toUpperCase()+dataTxt.slice(1))}</span><h1>Olá, ${h(nome)}</h1></div><button class="iconbtn" data-act="perfil" aria-label="Abrir seu perfil" style="overflow:hidden;padding:0">${S.foto?`<img src="${S.foto}" alt="" class="avatar-img">`:ICON.user}</button></div>`;
+  let o=`<header class="topo"><div class="row" style="gap:12px;min-width:0"><button class="avatar" data-act="perfil" aria-label="Abrir seu perfil">${S.foto?`<img src="${S.foto}" alt="" class="avatar-img">`:ICON.user}</button><div class="stack-s" style="gap:0;min-width:0"><span class="small muted">${h(dataTxt.charAt(0).toUpperCase()+dataTxt.slice(1))}</span><h1>Olá, ${h(nome)}</h1></div></div>${S.plano?`<button class="iconbtn" data-act="chat" aria-label="Perguntar ao instrutor">${ICON.chat}</button>`:''}</header>`;
   o+=statusBox();
   if(!iaPronta()) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="config">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1"><strong>Configure a IA</strong><span class="small">Sem ela o app não lê exames nem monta o plano.</span></span>${ICON.arrow}</button>`;
   if(!S.plano){
-    o+=`<div class="hero"><span class="eyebrow" style="color:var(--accent-ink)">Próximo passo</span><h2>Monte seu plano de treino e alimentação</h2><p class="sub">${S.exames.length?`${S.exames.length} exame${S.exames.length>1?'s':''} cadastrado${S.exames.length>1?'s':''}. O avaliador vai usar tudo isso.`:'Dá para gerar só com o perfil, mas com bioimpedância e exame de sangue o plano fica mais preciso.'}</p>
-      <div class="grid2"><button class="btn light" data-act="gerar"${S.busy?' disabled':''}>Gerar plano</button><button class="btn ghost" data-tab="exames">Adicionar exame</button></div></div>`;
+    o+=`<section class="hero"><h2>Monte seu plano de treino e alimentação</h2><p class="sub">${S.exames.length?`${S.exames.length} exame${S.exames.length>1?'s':''} cadastrado${S.exames.length>1?'s':''}. O avaliador vai usar tudo isso.`:'Dá para gerar só com o perfil, mas com bioimpedância e exame de sangue o plano fica mais preciso.'}</p>
+      <div class="grid2"><button class="btn" data-act="gerar"${S.busy?' disabled':''}>Gerar plano</button><button class="btn ghost" data-tab="exames">Adicionar exame</button></div></section>`;
     o+=cartaoRelogio();
     return o;
   }
-  const pl=S.plano; const prox=proximoDia(); const w=semana(); const recado=recadoRecuperacao();
-  o+=`<div class="hero"><div class="row between" style="align-items:flex-start;gap:14px"><div class="stack-s" style="gap:6px;min-width:0"><span class="eyebrow" style="color:var(--accent-ink)">Próximo treino</span><span class="grande">Treino ${h(prox.id)}</span><span style="font-weight:700;font-size:16px">${h(prox.titulo)}</span><span class="sub">${(prox.exercicios||[]).length} exercícios · ~${h(prox.duracao_min||S.perfil.minutos)} min</span></div>${anel(w.c,pl.treino.dias.length)}</div>${recado?`<p class="status warn small row" style="align-items:flex-start">${ICON.warn}<span>${h(recado)}</span></p>`:''}<button class="btn block" data-act="abrirTreino" data-dia="${h(prox.id)}">Começar treino</button></div>`;
-  o+=`<div class="grid2"><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Calorias do dia</span><span class="num">${num(pl.dieta.calorias)} <small>kcal</small></span></button><button class="tile" style="text-align:left;cursor:pointer;font:inherit;color:inherit" data-tab="dieta"><span class="small muted" style="font-weight:600">Proteína</span><span class="num">${num(pl.dieta.proteina_g)} <small>g</small></span></button></div>`;
+  const pl=S.plano; const prox=proximoDia(); const w=faixaSemana(); const recado=recadoRecuperacao();
+  const ex=prox.exercicios||[]; const feitoAlgum=(S.registro.treinos||[]).some(x=>x.data===hoje());
+  o+=`<section class="stack-s" aria-label="Esta semana"><div class="row between"><h2 class="sec">Esta semana</h2><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos${w.cm?' · '+w.cm+' min de cardio':''}</span></div>${w.html}</section>`;
+  o+=`<section class="hero" aria-labelledby="hTreino"><div class="stack-s" style="gap:2px"><span class="sub">${feitoAlgum?'Treino de hoje concluído. Próximo':'Próximo treino'}</span><h2 id="hTreino" class="grande">Treino ${h(prox.id)}</h2><span class="hero-tit">${h(prox.titulo)}</span></div>
+    ${ex.length?`<ul class="prev">${ex.slice(0,3).map(e=>`<li><span>${h(e.nome)}</span><b>${h(e.series)} × ${h(e.reps)}</b></li>`).join('')}</ul>`:''}
+    <span class="sub">${ex.length>3?'+ '+(ex.length-3)+' exercícios · ':''}cerca de ${h(prox.duracao_min||S.perfil.minutos)} min</span>
+    ${recado?`<p class="small row" style="align-items:flex-start;gap:8px">${ICON.warn}<span>${h(recado)}</span></p>`:''}
+    <button class="btn block" data-act="abrirTreino" data-dia="${h(prox.id)}">Começar treino</button></section>`;
   const al=(pl.alertas||[]).filter(a=>!alertaVerificado(a));
-  if(al.length) o+=`<button class="alert warn" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.warn}<span class="stack-s" style="gap:2px;flex:1;min-width:0"><strong>${al.length} ponto${al.length>1?'s':''} de atenção</strong><span class="small">${h(al.slice(0,2).map(a=>a.titulo).join(' e '))}</span></span>${ICON.arrow}</button>`;
-  else o+=`<button class="alert ok" style="border:0;font:inherit;text-align:left;cursor:pointer;width:100%" data-act="analise">${ICON.check}<span style="flex:1"><strong>${(pl.alertas||[]).length?'Pontos de atenção verificados':'Ver análise completa'}</strong></span>${ICON.arrow}</button>`;
+  o+=`<div class="list"><button class="li btn-li" data-tab="dieta"><span class="txt"><strong>Alimentação</strong><span class="small muted">${num(pl.dieta.calorias)} kcal · ${num(pl.dieta.proteina_g)} g de proteína por dia</span></span>${ICON.arrow}</button><button class="li btn-li" data-act="analise"><span class="txt"><strong>Análise do plano</strong><span class="small muted">${al.length?al.length+(al.length>1?' pontos de atenção':' ponto de atenção')+': '+h(al.slice(0,2).map(a=>a.titulo).join(' e ')):((pl.alertas||[]).length?'Pontos de atenção verificados':'Resumo do que o avaliador considerou')}</span></span>${al.length?`<span class="pill warn">${al.length}</span>`:''}${ICON.arrow}</button></div>`;
   o+=cartaoRelogio();
-  o+=`<div class="card stack"><div class="row between"><h3>Esta semana</h3><span class="small muted">${w.c} de ${pl.treino.dias.length} treinos${w.cm?' · '+w.cm+' min de cardio':''}</span></div><div class="week">${w.cells}</div></div>`;
-  o+=`<button class="card row" style="font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%" data-act="chat">${ICON.chat}<span class="stack-s" style="gap:2px;flex:1"><strong>Pergunte ao instrutor</strong><span class="small muted">Troca de exercício, substituição de alimento, dúvidas do plano</span></span>${ICON.arrow}</button>`;
   return o;
 }
 
@@ -1577,21 +1597,21 @@ function telaRevisar(){
   </form>`;
 }
 
+const cargaCurta=(e)=>{ const ss=sessoesCarga(e); const hj=ss.find(x=>x.d===hoje()); const u=hj||ss[ss.length-1]; const m=u?Math.max(0,...u.s.map(x=>x.kg||0)):0; return m?{t:kgTxt(m)+' kg',vazio:false}:{t:'Carga',vazio:true}; };
 function telaTreino(){
   if(!S.plano) return `<h1>Treino</h1>${semPlano()}`;
   const t=S.plano.treino; if(!S.dia) S.dia=proximoDia().id;
   const d=t.dias.find(x=>x.id===S.dia)||t.dias[0];
   const ex=d.exercicios||[]; const feitos=ex.filter((_,i)=>S.feitos[d.id+i]).length;
-  let o=`<div class="stack-s" style="gap:2px"><h1>Treino</h1><span class="small muted" style="font-weight:600">Divisão ${h(t.divisao||t.dias.map(x=>x.id).join(''))}${t.semanas?' · '+h(t.semanas)+' semanas':''}</span></div>`;
+  let o=`<div class="stack-s" style="gap:2px"><h1>Treino</h1><span class="small muted">Divisão ${h(t.divisao||t.dias.map(x=>x.id).join(''))}${t.semanas?' · '+h(t.semanas)+' semanas':''}</span></div>`;
   o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}${feitoHoje(x.id)?', feito hoje':''}">${h(x.id)}${feitoHoje(x.id)?' ✓':''}</button>`).join('')}</div>`;
-  o+=`<div class="row between" style="align-items:flex-end"><div class="stack-s" style="gap:2px"><h2>Treino ${h(d.id)} · ${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
-  if(t.orientacao) o+=`<p class="status ok">${h(t.orientacao)}</p>`;
-  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i];return `<div class="exw"><div class="ex${on?' feito':''}"><span class="exn" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}</strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · descanso '+h(e.descanso):''}</span><span class="small" style="color:var(--accent-ink)">Ver como fazer</span>${e.dica?`<span class="small muted">${h(e.dica)}</span>`:''}${(e.alternativas&&e.alternativas.length)?`<span class="small" style="color:var(--accent-ink)">Alternativa: ${e.alternativas.map(h).join(' · ')}</span>`:''}</span><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button></div><button class="chip carga-btn" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}">${resumoCarga(e)}</button></div>`;}).join('')}</div>`;
+  o+=`<div class="row between" style="align-items:flex-end;gap:12px"><div class="stack-s" style="gap:2px;min-width:0"><h2>${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
+  if(t.orientacao) o+=`<p class="small muted">${h(t.orientacao)}</p>`;
+  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i]; const cg=cargaCurta(e); return `<div class="ex${on?' feito':''}"><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)} <span class="cv" aria-hidden="true">›</span></strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · '+h(e.descanso):''}</span></span><button class="carga-btn${cg.vazio?' vazio':''}" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}. ${h(resumoCarga(e))}">${h(cg.t)}</button></div>`;}).join('')}</div>`;
   o+=feitoHoje(d.id)?`<div class="stack-s"><p class="status ok row">${ICON.check}<span>Treino ${h(d.id)} feito hoje. Bom trabalho.</span></p><button class="btn plain block" data-act="desconcluir" data-dia="${h(d.id)}">Desfazer a conclusão do treino ${h(d.id)}</button></div>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
   o+=cardioHtml(t.cardio);
-  if(!t.dias.some(x=>(x.exercicios||[]).some(e=>e.alternativas&&e.alternativas.length))) o+=`<button class="btn ghost block" data-act="pedirAlternativas"${iaPronta()?'':' disabled'}>Pedir alternativas para cada exercício</button>`;
-  o+=`<button class="btn ghost block" data-act="evolucao">Ver evolução das cargas</button>`;
-  o+=`<button class="btn plain block" data-act="pedirMudancaTreino"${iaPronta()?'':' disabled'}>Pedir mudança no treino ao instrutor</button>`;
+  const semAlt=!t.dias.some(x=>(x.exercicios||[]).some(e=>e.alternativas&&e.alternativas.length));
+  o+=`<div class="list"><button class="li btn-li" data-act="evolucao"><span class="txt"><strong>Evolução das cargas</strong></span>${ICON.arrow}</button>${semAlt?`<button class="li btn-li" data-act="pedirAlternativas"${iaPronta()?'':' disabled'}><span class="txt"><strong>Pedir alternativas</strong><span class="small muted">Uma opção de troca para cada exercício</span></span>${ICON.arrow}</button>`:''}<button class="li btn-li" data-act="pedirMudancaTreino"${iaPronta()?'':' disabled'}><span class="txt"><strong>Pedir mudança ao instrutor</strong></span>${ICON.arrow}</button></div>`;
   o+=`<p class="note">Sentiu dor articular ou tontura, pare o exercício. O instrutor propõe a troca e você aplica no treino com um toque.</p>`;
   return o;
 }
@@ -1799,8 +1819,8 @@ function cardiosSemana(){
 }
 const cardioTxt=(x)=>[dataCurta(x.d),x.tipo,x.min+' min',x.km?kgTxt(x.km)+' km':'',x.esf||''].filter(Boolean).join(' · ');
 function cardioHtml(prescricao){
-  const w=cardiosSemana(), rec=(S.registro.cardios||[]).slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0).slice(0,5);
-  return `<div class="card stack-s"><h3>Cardio</h3>${prescricao?`<p class="small">${h(prescricao)}</p>`:''}<span class="small muted">Esta semana: ${w.n?w.n+(w.n===1?' sessão':' sessões')+' · '+w.min+' min':'nenhum cardio anotado'}</span><button class="btn ghost block" data-act="cardioNovo">Anotar cardio</button>${rec.length?`<div class="stack-s" style="gap:4px"><span class="small muted" style="font-weight:600">Últimos registros</span>${rec.map(x=>`<div class="row between" style="gap:8px;align-items:center"><span class="small" style="min-width:0">${h(cardioTxt(x))}</span><button class="chip" style="min-height:44px;flex:none" data-act="cardioDel" data-id="${h(x.id)}" aria-label="Remover cardio: ${h(cardioTxt(x))}">Remover</button></div>`).join('')}</div>`:''}</div>`;
+  const w=cardiosSemana(), rec=(S.registro.cardios||[]).slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0).slice(0,3);
+  return `<div class="card stack-s"><div class="row between" style="gap:10px"><div class="stack-s" style="gap:0;min-width:0"><h3>Cardio</h3><span class="small muted">${w.n?w.n+(w.n===1?' sessão':' sessões')+' · '+w.min+' min nesta semana':'Nenhum cardio anotado esta semana'}</span></div><button class="btn ghost" style="min-height:44px;padding:0 16px;flex:none" data-act="cardioNovo">Anotar</button></div>${prescricao?`<p class="small muted">${h(prescricao)}</p>`:''}${rec.length?`<div class="stack-s" style="gap:2px">${rec.map(x=>`<div class="row between" style="gap:8px"><span class="small" style="min-width:0">${h(cardioTxt(x))}</span><button class="chip" style="min-height:44px;flex:none;padding:0 12px" data-act="cardioDel" data-id="${h(x.id)}" aria-label="Remover cardio: ${h(cardioTxt(x))}">Remover</button></div>`).join('')}</div>`:''}</div>`;
 }
 function abrirCardio(foco){
   fecharExercicio(); EX_FOCO=foco||null;
@@ -2001,9 +2021,9 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='bioEntrar'){ await tentarDigital(false); }
   else if(a==='bioAtivar'){
     try{ await ativarBio(); toast('Digital ativada. Ao abrir o app, ela entra no lugar da senha.'); }
-    catch(e){ toast(e&&e.name==='NotAllowedError'?'Digital não confirmada. Nada foi alterado.':'Este aparelho ou navegador não consegue travar a chave com a digital. Continue usando a senha.'); }
+    catch(e){ const cod=e&&e.code; toast((cod==='CANCELADO'||(e&&e.name==='NotAllowedError'))?'Digital não confirmada. Nada foi alterado.':(cod==='SEM_DIGITAL'?'Cadastre uma digital em Configurações › Segurança do celular e tente de novo.':(cod==='BLOQUEADO'?'Muitas tentativas. Tente de novo em instantes.':'Não consegui ativar a digital neste aparelho. Continue usando a senha.'+(e&&e.message?' ('+String(e.message).slice(0,90)+')':'')))); }
     render(); }
-  else if(a==='bioDesativar'){ const c=rawGet('cofre'); if(c){ delete c.bio; rawSet('cofre',c); } toast('Digital desativada. O app volta a pedir só a senha.'); render(); }
+  else if(a==='bioDesativar'){ const c=rawGet('cofre'); const nat=c&&c.bio&&c.bio.tipo==='nativo'; if(c){ delete c.bio; rawSet('cofre',c); } if(nat&&bioNativo()){ try{ await bioNat('remove'); }catch(e){} } toast('Digital desativada. O app volta a pedir só a senha.'); render(); }
   else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
@@ -2149,14 +2169,17 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=25;
+const VERSAO_APP=27;
+const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
+const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
+  if(NATIVO&&!bioNativo()) return 'esta versão do app Android é antiga. Instale o APK mais novo (em Releases, no GitHub).';
   if(!window.isSecureContext) return 'o app não está num endereço seguro (https).';
   if(!window.PublicKeyCredential) return NATIVO?'o app Android não oferece, dentro dele, o recurso de digital do navegador.':'este navegador não oferece o recurso de digital.';
   return '';
 }
-const bioDisponivel=()=>!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
-const bioAtiva=()=>{ const c=rawGet('cofre'); return !!(c&&c.bio&&c.bio.id); };
+const bioDisponivel=()=>bioNativo()||!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
+const bioAtiva=()=>{ const c=rawGet('cofre'); return !!(c&&c.bio&&(c.bio.id||c.bio.blob)); };
 async function bioChave(seg){
   const base=await crypto.subtle.importKey('raw',seg,'HKDF',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(32),info:new TextEncoder().encode('tn-bio-v1')},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
@@ -2168,6 +2191,12 @@ async function bioSegredo(idBytes){ // pede a digital e devolve o segredo do sen
 }
 async function ativarBio(){
   if(!COFRE.mestra) throw new Error('fechado');
+  if(bioNativo()){ // app Android: chave no cofre do Android, liberada só pela digital
+    const d=await bioNat('isAvailable'); if(!d||!d.disponivel){ const e=new Error('sem digital cadastrada'); e.code='SEM_DIGITAL'; throw e; }
+    const r=await bioNat('encrypt',{dados:b64(COFRE.mestra),titulo:'Ativar a digital',subtitulo:'Confirme para guardar a chave do app neste aparelho.'});
+    if(!r||!r.blob) throw new Error('sem resposta do aparelho');
+    const c=rawGet('cofre'); c.bio={tipo:'nativo',blob:r.blob}; rawSet('cofre',c); return;
+  }
   const cred=await navigator.credentials.create({publicKey:{rp:{name:'Treino e Nutrição',id:location.hostname},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'treino-nutricao',displayName:'Treino e Nutrição'},challenge:crypto.getRandomValues(new Uint8Array(32)),pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'preferred'},timeout:60000,extensions:{prf:{}}}});
   const id=new Uint8Array(cred.rawId);
   const chave=await bioChave(await bioSegredo(id)); // 2ª leitura da digital: gera o segredo que trava a chave mestra
@@ -2175,13 +2204,23 @@ async function ativarBio(){
 }
 async function entrarComDigital(){
   const c=rawGet('cofre'); if(!c||!c.bio) return false;
+  if(c.bio.tipo==='nativo'){
+    if(!bioNativo()) throw new Error('plugin ausente');
+    const r=await bioNat('decrypt',{blob:c.bio.blob,titulo:'Entrar no app',subtitulo:'Confirme com a digital.'});
+    if(!r||!r.dados) throw new Error('sem resposta do aparelho');
+    await carregarCache(unb64(r.dados)); return true;
+  }
   const chave=await bioChave(await bioSegredo(unb64(c.bio.id)));
   await carregarCache(await decifrarBytes(chave,c.bio.pac)); return true;
 }
 async function tentarDigital(silencioso){
   if(S.busy||S.lock!=='entrar') return;
   try{ if(await entrarComDigital()){ rawDel('tentativas'); S.lock=null; S.erro=null; await carregarDados(); } }
-  catch(e){ if(!silencioso){ S.erro=(e&&e.name==='NotAllowedError')?'Digital não confirmada. Tente de novo ou digite a senha.':'Não consegui usar a digital agora. Digite a senha.'; render(); } }
+  catch(e){
+    const cod=e&&e.code;
+    if(cod==='KEY_INVALIDATED'||cod==='KEY_MISSING'){ const c=rawGet('cofre'); if(c&&c.bio){ delete c.bio; rawSet('cofre',c); } S.erro='A digital deste aparelho mudou ou não foi encontrada. Entre com a senha e ative a digital de novo no Perfil.'; render(); return; }
+    if(!silencioso){ S.erro=(cod==='CANCELADO'||(e&&e.name==='NotAllowedError'))?'Digital não confirmada. Tente de novo ou digite a senha.':(cod==='BLOQUEADO'?'Muitas tentativas com a digital. Digite a senha.':'Não consegui usar a digital agora. Digite a senha.'); render(); }
+  }
 }
 const autoDigital=()=>{ if(S.lock==='entrar'&&bioAtiva()&&bioDisponivel()) setTimeout(()=>tentarDigital(true),450); };
 
