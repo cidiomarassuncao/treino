@@ -1722,7 +1722,7 @@ function toast(msg){let el=document.getElementById('toast');if(!el){el=document.
 // ===== Como fazer o exercício: imagem + links (Free Exercise DB, domínio público) =====
 const EX_JSON=['https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/dist/exercises.json','https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json'];
 const EX_IMG=['https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/','https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/'];
-let EX_DB=null, EX_DB_P=null, EX_FOCO=null;
+let EX_DB=null, EX_DB_P=null, EX_FOCO=null, EX_ATUAL=null;
 const semAcento=(t)=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 // português → termos em inglês (frases mais longas primeiro)
 const EX_PT=[['agachamento bulgaro','bulgarian split squat'],['agachamento sumo','sumo squat'],['agachamento hack','hack squat'],['agachamento frontal','front squat'],['agachamento livre','barbell squat'],['agachamento','squat'],['levantamento terra','deadlift'],['stiff','stiff-legged deadlift'],['romeno','romanian deadlift'],['terra','deadlift'],
@@ -1735,7 +1735,7 @@ const EX_PT=[['agachamento bulgaro','bulgarian split squat'],['agachamento sumo'
 ['leg press','leg press'],['cadeira extensora','leg extensions'],['extensora','leg extensions'],['mesa flexora','lying leg curls'],['cadeira flexora','seated leg curl'],['flexora','leg curl'],['cadeira abdutora','thigh abductor'],['abdutora','thigh abductor'],['cadeira adutora','thigh adductor'],['adutora','thigh adductor'],
 ['panturrilha','calf raise'],['gemeos','calf raise'],['elevacao pelvica','hip thrust'],['ponte de gluteo','glute bridge'],['gluteo','glute'],['afundo','lunge'],['passada','lunge'],['avanco','lunge'],
 ['desenvolvimento','shoulder press'],['elevacao lateral','side lateral raise'],['elevacao frontal','front raise'],['encolhimento','shrug'],['arnold','arnold press'],['pullover','pullover'],['face pull','face pull'],
-['abdominal infra','leg raise'],['elevacao de pernas','leg raise'],['abdominal','crunches'],['prancha','plank'],['rotacao russa','russian twist'],
+['abdominal infra','reverse crunch'],['elevacao de pernas','leg raise'],['abdominal','crunches'],['prancha','plank'],['rotacao russa','russian twist'],
 ['sentado','seated'],['sentada','seated'],['em pe','standing'],['deitado','lying'],['deitada','lying'],['unilateral','one-arm'],['maquina','machine'],['smith','smith machine'],['esteira','treadmill'],['bicicleta','bike'],['eliptico','elliptical'],['coice','kickback']];
 EX_PT.sort((a,b)=>b[0].length-a[0].length);
 const EX_STOP=new Set(['de','da','do','das','dos','na','nas','no','nos','em','medium','attachment','version','pela','pelas','com','a','o','e','para','pela','pelo','the','with','and','reto','reta','livre']);
@@ -1745,6 +1745,29 @@ function exParaIngles(nome){
   let t=' '+semAcento(nome).replace(/[()\-\/,]/g,' ')+' '; const out=[];
   for(const [pt,en] of EX_PT){ const r=new RegExp('(^|\\s)'+pt.replace(/ /g,'\\s+')+'(?=\\s|$)','g'); if(r.test(t)){ out.push(en); t=t.replace(r,' '); } }
   return out.join(' ')+' '+t;
+}
+// Exercícios de abdômen: nomes exatos do banco, para não cair num exercício parecido de perna ou quadril
+const EX_ALIAS=[
+  [/abdominal\s+(infra|inferior|invertido|reverso)|infra\s*abdominal|abdomen\s+inferior|elevacao\s+(de|das)\s+pernas|elevacao\s+(de|dos)\s+joelhos/,['Reverse Crunch','Flat Bench Lying Leg Raise','Hanging Leg Raise','Leg Pull-In']],
+  [/abdominal\s+(supra|tradicional|crunch|na\s+maquina)|supra\s*abdominal|^abdominal$|^crunch/,['Crunches','Decline Crunch','Crunch - Legs On Exercise Ball']],
+  [/obliquo|rotacao\s+russa|russian\s+twist/,['Russian Twist','Oblique Crunches','Side Bridge']],
+  [/prancha|plank/,['Plank','Side Bridge']]
+];
+function exAlias(nome,db){
+  const n=semAcento(nome).replace(/[()\-\/,]/g,' ').replace(/\s+/g,' ').trim();
+  for(const [re,nomes] of EX_ALIAS) if(re.test(n)){
+    for(const alvo of nomes){ const a=semAcento(alvo); const x=db.find(d=>semAcento(d.name)===a); if(x) return x; }
+  }
+  return null;
+}
+function exCandidatas(e,db){
+  const q=exTokens(exParaIngles(e.nome)+' '+(e.en||'')); const vistos=new Set(), out=[];
+  const poe=(x)=>{ if(x&&x.images&&x.images.length&&!vistos.has(x.id)){ vistos.add(x.id); out.push(x); } };
+  poe(exAlias(e.nome,db));
+  const pont=[]; for(const d of db){ const n=d._t||(d._t=exTokens(d.name)); let i=0; for(const w of q) if(n.has(w)) i++; if(i) pont.push([2*i/(q.size+n.size),d]); }
+  pont.sort((a,b)=>b[0]-a[0]||a[1].name.length-b[1].name.length);
+  for(const [,d] of pont){ if(out.length>=8) break; poe(d); }
+  return out;
 }
 function exMelhor(texto,db){
   const q=exTokens(texto); if(!q.size) return null; let melhor=null,pts=0;
@@ -1763,13 +1786,13 @@ function carregarExDB(){
   if(!EX_DB_P) EX_DB_P=(async()=>{ for(const u of EX_JSON){ try{ const r=await fetch(u); if(!r.ok) continue; const j=await r.json(); if(Array.isArray(j)&&j.length){ EX_DB=j; return j; } }catch(e){} } EX_DB_P=null; return null; })();
   return EX_DB_P;
 }
-const exMapaGet=()=>{ try{ return JSON.parse(localStorage.getItem('tn:exmap')||'{}'); }catch(e){ return {}; } };
-const exMapaSet=(k,v)=>{ try{ const m=exMapaGet(); m[k]=v; localStorage.setItem('tn:exmap',JSON.stringify(m)); }catch(e){} };
+const exMapaGet=()=>{ try{ return JSON.parse(localStorage.getItem('tn:exmap2')||'{}'); }catch(e){ return {}; } };
+const exMapaSet=(k,v)=>{ try{ const m=exMapaGet(); m[k]=v; localStorage.setItem('tn:exmap2',JSON.stringify(m)); }catch(e){} };
 async function acharExercicio(e){
   const db=await carregarExDB(); if(!db) return {erro:'rede'};
   const chave=semAcento(e.nome); const salvo=exMapaGet()[chave];
   if(salvo){ const x=db.find(d=>d.id===salvo); if(x) return {ex:x}; }
-  let x=(e.en&&exMelhor(e.en,db))||exMelhor(exParaIngles(e.nome),db);
+  let x=exAlias(e.nome,db)||(e.en&&exMelhor(e.en,db))||exMelhor(exParaIngles(e.nome),db);
   if(!x&&iaPronta()&&navigator.onLine){ // sem correspondência: pede o nome em inglês à IA
     try{ const r=await ia.json('Qual o nome em inglês do exercício "'+e.nome+'", como aparece em bancos de exercícios (ex.: "Barbell Bench Press", "Lat Pulldown")? Responda {"en":"nome em inglês"}.',{tarefa:'chat'}); if(r&&r.en) x=exMelhor(String(r.en),db); }catch(err){}
   }
@@ -1778,7 +1801,7 @@ async function acharExercicio(e){
 }
 function fecharExercicio(){ const m=document.getElementById('exModal'); if(!m) return; m.remove(); document.body.style.overflow=''; if(EX_FOCO&&EX_FOCO.focus) EX_FOCO.focus(); EX_FOCO=null; }
 async function abrirExercicio(e,foco){
-  fecharExercicio(); EX_FOCO=foco||null;
+  fecharExercicio(); EX_FOCO=foco||null; EX_ATUAL=e;
   const nome=e.nome||'Exercício', alts=(e.alternativas||[]).filter(Boolean);
   const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
   const info=[(e.series||e.reps)?h(e.series||'')+' × '+h(e.reps||'')+(e.descanso?' · descanso '+h(e.descanso):''):'',].filter(Boolean).join('');
@@ -1792,8 +1815,16 @@ async function abrirExercicio(e,foco){
   const r=await acharExercicio(e); const box=document.getElementById('exmImg'); if(!box||!document.getElementById('exModal')) return;
   if(r.ex&&r.ex.images&&r.ex.images.length){
     const fr=r.ex.images.slice(0,2);
-    box.className=''; box.innerHTML=`<div class="exm-imgs">${fr.map((p,i)=>`<figure style="margin:0"><img src="${EX_IMG[0]+p}" data-alt="${EX_IMG[1]+p}" alt="${i?'Posição final':'Posição inicial'} de ${h(nome)}" loading="lazy" onerror="if(this.dataset.alt&&this.src!==this.dataset.alt){this.src=this.dataset.alt}else{this.closest('figure').style.display='none'}"><figcaption class="small muted" style="text-align:center">${i?'Final':'Início'}</figcaption></figure>`).join('')}</div><p class="small muted" style="margin-top:6px">Imagem de referência: ${h(r.ex.name)} (Free Exercise DB, domínio público). Confira se é o mesmo movimento do seu treino.</p>`;
+    box.className=''; box.innerHTML=`<div class="exm-imgs">${fr.map((p,i)=>`<figure style="margin:0"><img src="${EX_IMG[0]+p}" data-alt="${EX_IMG[1]+p}" alt="${i?'Posição final':'Posição inicial'} de ${h(nome)}" loading="lazy" onerror="if(this.dataset.alt&&this.src!==this.dataset.alt){this.src=this.dataset.alt}else{this.closest('figure').style.display='none'}"><figcaption class="small muted" style="text-align:center">${i?'Final':'Início'}</figcaption></figure>`).join('')}</div><p class="small muted" style="margin-top:6px">Imagem de referência: ${h(r.ex.name)} (Free Exercise DB, domínio público). Confira se é o mesmo movimento do seu treino.</p><button class="btn plain block" style="margin-top:8px" data-act="exOutras">Imagem errada? Escolher outra</button>`;
   } else box.textContent=r.erro==='rede'?'Não consegui baixar as imagens (precisa de internet). Use os botões abaixo.':'Não achei uma imagem para este exercício. Use os botões abaixo.';
+}
+async function exEscolherOutra(){
+  const e=EX_ATUAL, box=document.getElementById('exmImg'); if(!e||!box) return;
+  const db=await carregarExDB(); if(!db) return;
+  const c=exCandidatas(e,db);
+  if(!c.length){ box.textContent='Não achei outras opções para este exercício.'; return; }
+  box.className='';
+  box.innerHTML='<p class="small" style="font-weight:600">Toque na imagem que mostra o seu exercício</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+c.map(x=>'<button class="btn ghost" data-act="exEscolhe" data-id="'+h(x.id)+'" style="padding:6px;display:block;text-align:center"><img src="'+EX_IMG[0]+x.images[0]+'" data-alt="'+EX_IMG[1]+x.images[0]+'" alt="" loading="lazy" style="width:100%;border-radius:8px" onerror="if(this.dataset.alt&&this.src!==this.dataset.alt){this.src=this.dataset.alt}"><span class="small" style="display:block">'+h(x.name)+'</span></button>').join('')+'</div>';
 }
 function exercicioPorChave(k){ const ds=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[]; for(const d of ds){ const ex=d.exercicios||[]; for(let i=0;i<ex.length;i++) if(d.id+i===k) return ex[i]; } return null; }
 document.addEventListener('keydown',(ev)=>{
@@ -2034,6 +2065,8 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
   else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='exOutras'){ exEscolherOutra(); }
+  else if(a==='exEscolhe'){ const e=EX_ATUAL; if(e){ exMapaSet(semAcento(e.nome),t.dataset.id); abrirExercicio(e,EX_FOCO); } }
   else if(a==='tema'){ try{ localStorage.setItem('tn_tema',t.dataset.t); }catch(e){} aplicarTema(); render(); }
   else if(a==='fotoCorpoVer'){ abrirFotoCorpo(t.dataset.id); }
   else if(a==='fotoCorpoDel'){ S.fotosCorpo=(S.fotosCorpo||[]).filter(x=>x.id!==t.dataset.id); await save('fotosCorpo',S.fotosCorpo); fecharExercicio(); toast('Foto apagada.'); render(); }
@@ -2274,7 +2307,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=29;
+const VERSAO_APP=30;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
