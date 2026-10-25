@@ -1730,7 +1730,7 @@ const EX_PT=[['agachamento bulgaro','bulgarian split squat'],['agachamento sumo'
 ['crucifixo inverso','reverse flyes rear delt'],['crucifixo','flyes'],['voador','butterfly'],['peck deck','butterfly'],['pec deck','butterfly'],['crossover','cable crossover'],['flexao de bracos','pushup'],['flexao','pushup'],['paralelas','dips'],['mergulho','dips'],
 ['triceps testa','skullcrusher'],['triceps frances','triceps extension overhead'],['triceps corda','triceps pushdown rope'],['triceps pulley','triceps pushdown'],['triceps coice','triceps kickback'],['triceps','triceps'],['biceps','biceps'],
 ['rosca direta','barbell curl'],['rosca alternada','alternate dumbbell curl'],['rosca martelo','hammer curl'],['martelo','hammer'],['rosca scott','preacher curl'],['scott','preacher'],['rosca concentrada','concentration curl'],['rosca','curl'],
-['puxada','lat pulldown'],['pulley','pulldown'],['frente','front'],['atras','behind neck'],['aberta','wide grip'],['fechada','close grip'],['supinada','underhand'],
+['articulada',''],['articulado',''],['convergente',''],['divergente',''],['puxada','lat pulldown'],['pulley','pulldown'],['frente','front'],['atras','behind neck'],['aberta','wide grip'],['fechada','close grip'],['supinada','underhand'],
 ['remada curvada','bent over row'],['remada cavalinho','t-bar row'],['remada baixa','seated cable row'],['remada unilateral','one-arm dumbbell row'],['serrote','one-arm dumbbell row'],['remada','row'],
 ['leg press','leg press'],['cadeira extensora','leg extensions'],['extensora','leg extensions'],['mesa flexora','lying leg curls'],['cadeira flexora','seated leg curl'],['flexora','leg curl'],['cadeira abdutora','thigh abductor'],['abdutora','thigh abductor'],['cadeira adutora','thigh adductor'],['adutora','thigh adductor'],
 ['panturrilha','calf raise'],['gemeos','calf raise'],['elevacao pelvica','hip thrust'],['ponte de gluteo','glute bridge'],['gluteo','glute'],['afundo','lunge'],['passada','lunge'],['avanco','lunge'],
@@ -1751,6 +1751,8 @@ const EX_ALIAS=[
   [/abdominal\s+(infra|inferior|invertido|reverso)|infra\s*abdominal|abdomen\s+inferior|elevacao\s+(de|das)\s+pernas|elevacao\s+(de|dos)\s+joelhos/,['Reverse Crunch','Flat Bench Lying Leg Raise','Hanging Leg Raise','Leg Pull-In']],
   [/abdominal\s+(supra|tradicional|crunch|na\s+maquina)|supra\s*abdominal|^abdominal$|^crunch/,['Crunches','Decline Crunch','Crunch - Legs On Exercise Ball']],
   [/obliquo|rotacao\s+russa|russian\s+twist/,['Russian Twist','Oblique Crunches','Side Bridge']],
+  [/puxada\s+(alta|aberta|frontal|articulada|articulado|na\s+frente)|pulldown|puxador\s+alto|^puxada$/,['Wide-Grip Lat Pulldown','Full Range-Of-Motion Lat Pulldown','Close-Grip Front Lat Pulldown','V-Bar Pulldown','Underhand Cable Pulldowns']],
+  [/puxada\s+(supinada|fechada|neutra|triangulo)/,['Close-Grip Front Lat Pulldown','Underhand Cable Pulldowns','V-Bar Pulldown','Wide-Grip Lat Pulldown']],
   [/prancha|plank/,['Plank','Side Bridge']]
 ];
 function exAlias(nome,db){
@@ -1766,7 +1768,12 @@ function exCandidatas(e,db){
   poe(exAlias(e.nome,db));
   const pont=[]; for(const d of db){ const n=d._t||(d._t=exTokens(d.name)); let i=0; for(const w of q) if(n.has(w)) i++; if(i) pont.push([2*i/(q.size+n.size),d]); }
   pont.sort((a,b)=>b[0]-a[0]||a[1].name.length-b[1].name.length);
-  for(const [,d] of pont){ if(out.length>=8) break; poe(d); }
+  for(const [,d] of pont){ if(out.length>=6) break; poe(d); }
+  // completa com exercícios do mesmo músculo principal do melhor candidato
+  const ref=out[0]||(pont[0]&&pont[0][1]);
+  if(ref&&ref.primaryMuscles){ const mus=ref.primaryMuscles.join(',');
+    for(const d of db){ if(out.length>=12) break; if(d.primaryMuscles&&d.primaryMuscles.join(',')===mus&&d.equipment===ref.equipment) poe(d); }
+    for(const d of db){ if(out.length>=12) break; if(d.primaryMuscles&&d.primaryMuscles.join(',')===mus) poe(d); } }
   return out;
 }
 function exMelhor(texto,db){
@@ -2307,7 +2314,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=30;
+const VERSAO_APP=31;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
