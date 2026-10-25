@@ -1,5 +1,5 @@
 // Guarda o app para abrir sem internet. As chamadas de IA sempre vão para a rede.
-const CACHE = 'treino-v32';
+const CACHE = 'treino-v33';
 const CACHE_EX = 'treino-exercicios'; // imagens e lista de exercícios: não é apagado nas atualizações do app
 const BASE = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => {

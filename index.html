@@ -1380,7 +1380,7 @@ function telaPerfil(){
   <button class="btn ghost block" data-act="gerarCodigo">Novo código de recuperação</button>
   ${bioDisponivel()?`<div class="stack-s" style="gap:6px"><span class="small muted">${bioAtiva()?'A digital está ativa: ao abrir o app, ela entra no lugar da senha. A senha continua valendo.':'Entre com a digital do aparelho em vez de digitar a senha. A senha e o código de recuperação continuam valendo.'}</span><button class="btn ghost block" data-act="${bioAtiva()?'bioDesativar':'bioAtivar'}">${bioAtiva()?'Desativar a digital':'Ativar a digital'}</button></div>`:`<div class="stack-s" style="gap:6px"><span class="small muted">Entrar com a digital: indisponível aqui, porque ${h(bioMotivo()||'o aparelho não respondeu ao teste.')} Use a senha.</span></div>`}</div>
   <div class="card stack"><h3>Seus dados</h3><p class="small muted">Ficam guardados só neste celular, criptografados com a sua senha. Se apagar os dados do navegador ou trocar de aparelho, eles se perdem. Faça uma cópia de vez em quando.</p>
-  <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
+  <div class="grid2"><button class="btn ghost" data-act="exportar">Salvar cópia</button><label class="btn ghost" for="fImp" style="cursor:pointer">Restaurar cópia</label></div><button class="btn ghost block" data-act="nuvem">Enviar cópia para a nuvem (OneDrive)</button><p class="small muted">Abre a lista de apps do celular: escolha o OneDrive. A cópia não é criptografada, guarde só numa conta sua.</p><input id="fImp" class="sr" type="file" accept="application/json,.json"></div>`:''}`;
 }
 
 function telaConfig(){
@@ -1537,6 +1537,7 @@ function telaInicio(){
     <span class="sub">${ex.length>3?'+ '+(ex.length-3)+' exercícios · ':''}cerca de ${h(prox.duracao_min||S.perfil.minutos)} min</span>
     ${recado?`<p class="small row" style="align-items:flex-start;gap:8px">${ICON.warn}<span>${h(recado)}</span></p>`:''}
     <button class="btn block" data-act="abrirTreino" data-dia="${h(prox.id)}">Começar treino</button></section>`;
+  o+=`<button class="btn ghost block" data-act="relatorio">Resumo da semana</button>`;
   const al=(pl.alertas||[]).filter(a=>!alertaVerificado(a));
   o+=`<div class="list"><button class="li btn-li" data-tab="dieta"><span class="txt"><strong>Alimentação</strong><span class="small muted">${num(pl.dieta.calorias)} kcal · ${num(pl.dieta.proteina_g)} g de proteína por dia</span></span>${ICON.arrow}</button><button class="li btn-li" data-act="analise"><span class="txt"><strong>Análise do plano</strong><span class="small muted">${al.length?al.length+(al.length>1?' pontos de atenção':' ponto de atenção')+': '+h(al.slice(0,2).map(a=>a.titulo).join(' e ')):((pl.alertas||[]).length?'Pontos de atenção verificados':'Resumo do que o avaliador considerou')}</span></span>${al.length?`<span class="pill warn">${al.length}</span>`:''}${ICON.arrow}</button></div>`;
   o+=cartaoRelogio();
@@ -1706,6 +1707,7 @@ function render(){
   else{
     $nav.hidden=false;
     if(S.sub==='evolucao') html=telaEvolucao();
+    else if(S.sub==='relatorio') html=telaRelatorio();
     else if(S.sub==='analise'&&S.plano) html=telaAnalise();
     else if(S.sub==='chat') html=telaChat();
     else if(S.sub==='digitar') html=telaDigitar();
@@ -1859,6 +1861,25 @@ function subHtml(e){
 }
 function trocasParaIA(){
   const subs=(S.registro&&S.registro.subs)||{}; return Object.keys(subs).map(k=>({no_lugar_de:k,faz_agora:subs[k].nome,desde:subs[k].d}));
+}
+function montarCopia(){ return {app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,fotosCorpo:S.fotosCorpo||[],exames:S.exames,plano:S.plano,registro:S.registro}; }
+// nuvem=true abre a lista de apps do celular (OneDrive, Google Drive, e-mail...) para guardar o arquivo
+async function exportarCopia(nuvem){
+  const nome='treino-nutricao-'+hoje()+'.json', txt=JSON.stringify(montarCopia());
+  if(NATIVO){
+    const C=window.Capacitor;
+    if(nuvem&&C&&typeof C.nativePromise==='function'){
+      try{ await C.nativePromise('TnBiometric','compartilhar',{nome,dados:txt}); toast('Escolha o OneDrive (ou outro app) para guardar a cópia.'); return; }
+      catch(e){ if(!/implement|not found|unavailable/i.test(String(e&&(e.message||e)))) { toast('Não consegui abrir a lista de apps.'); return; } toast('Atualize o app Android para enviar à nuvem. A cópia foi copiada: cole no e-mail ou WhatsApp.'); }
+    }
+    try{ await navigator.clipboard.writeText(txt); if(!nuvem) toast('Cópia copiada. Cole num e-mail ou no WhatsApp para você mesmo e guarde.'); }catch(e){ toast('Não consegui copiar. Faça a cópia pelo app no Chrome.'); }
+    return;
+  }
+  const arq=new File([txt],nome,{type:'application/json'});
+  if(nuvem&&navigator.canShare&&navigator.canShare({files:[arq]})){ try{ await navigator.share({files:[arq],title:'Cópia do app de treino'}); toast('Escolha o OneDrive (ou outro app) para guardar a cópia.'); return; }catch(e){ if(e&&e.name==='AbortError') return; } }
+  const u=URL.createObjectURL(arq); const ln=document.createElement('a'); ln.href=u; ln.download=nome;
+  document.body.appendChild(ln); ln.click(); ln.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000);
+  toast('Cópia salva em Downloads'+(nuvem?'. Envie esse arquivo ao OneDrive.':'.')+' A chave de API não vai junto.');
 }
 document.addEventListener('keydown',(ev)=>{
   if(ev.key==='Escape'&&document.getElementById('exModal')){ fecharExercicio(); return; }
@@ -2069,6 +2090,51 @@ function evolucaoHtml(ss){
   const pts=pontosCarga(ss); if(!pts.length) return '';
   return `<div class="stack-s" style="gap:6px"><span class="small muted" style="font-weight:600">Evolução (maior carga de cada treino)</span>${graficoCarga(pts)}<span class="small">${h(textoEvolucao(resumoEvolucao(pts)))}</span></div>`;
 }
+// ===== Resumo da semana (segunda a domingo; off=0 esta semana, 1 semana passada) =====
+function dadosSemana(off){
+  const hj=new Date(); const seg=new Date(hj); seg.setDate(hj.getDate()-((hj.getDay()+6)%7)-7*off); const dom=new Date(seg); dom.setDate(seg.getDate()+6);
+  const ini=isoData(seg), fim=isoData(dom)<hoje()?isoData(dom):hoje();
+  const dias=((S.plano&&S.plano.treino&&S.plano.treino.dias)||[]);
+  const tr=(S.registro.treinos||[]).filter(x=>x.data>=ini&&x.data<=fim).sort((a,b)=>a.data<b.data?-1:1);
+  const cd=(S.registro.cardios||[]).filter(x=>x.d>=ini&&x.d<=fim);
+  const recordes=[], vol=[]; const vistos=new Set();
+  for(const d of dias) for(const e of (d.exercicios||[])){ for(const nome of [e.nome].concat(((S.registro.subs||{})[semAcento(e.nome)]||{}).nome||[])){
+    const c=semAcento(nome); if(vistos.has(c)) continue; vistos.add(c);
+    const ss=((S.registro.cargas||{})[c])||[]; const na=ss.filter(x=>x.d>=ini&&x.d<=fim); if(!na.length) continue;
+    const mx=(l)=>Math.max(0,...l.map(x=>Math.max(0,...x.s.map(y=>y.kg||0))));
+    const antes=ss.filter(x=>x.d<ini), m=mx(na), a=mx(antes);
+    vol.push({nome,max:m}); if(antes.length&&m>a) recordes.push({nome,de:a,para:m});
+  } }
+  const sd=S.saude&&S.saude.dias?S.saude.dias:{}; const ks=Object.keys(sd).filter(k=>k>=ini&&k<=fim);
+  const med=(campo)=>{ const v=ks.map(k=>sd[k][campo]).filter(x=>isFinite(x)&&x>0); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null; };
+  const trocas=(S.registro.subLog||[]).filter(x=>x.d>=ini&&x.d<=fim&&semAcento(x.de)!==semAcento(x.para));
+  return {ini,fim,meta:dias.length,treinos:tr,cardios:cd,cardioMin:cd.reduce((t,x)=>t+(x.min||0),0),cardioKm:Math.round(cd.reduce((t,x)=>t+(x.km||0),0)*10)/10,recordes,comCarga:vol.length,sono:med('sono'),passos:med('passos'),fc:med('fcRepouso'),trocas};
+}
+function relatorioTexto(r){
+  const L=['Resumo da semana '+dataBR(r.ini)+' a '+dataBR(r.fim)];
+  L.push('Treinos: '+r.treinos.length+(r.meta?' de '+r.meta+' planejados':'')+(r.treinos.length?' ('+r.treinos.map(t=>dataCurta(t.data)+' treino '+t.dia).join(', ')+')':''));
+  L.push('Cardio: '+(r.cardios.length?r.cardios.length+(r.cardios.length===1?' sessão, ':' sessões, ')+r.cardioMin+' min'+(r.cardioKm?', '+kgTxt(r.cardioKm)+' km':''):'nenhum registrado'));
+  if(r.recordes.length) L.push('Cargas que subiram: '+r.recordes.map(x=>x.nome+' '+kgTxt(x.de)+' → '+kgTxt(x.para)+' kg').join('; '));
+  else if(r.comCarga) L.push('Cargas anotadas em '+r.comCarga+' exercícios, sem recorde novo.');
+  if(r.trocas.length) L.push('Trocas de exercício: '+r.trocas.map(x=>x.de+' → '+x.para).join('; '));
+  if(r.sono) L.push('Sono médio: '+hm(r.sono)); if(r.passos) L.push('Passos por dia (média): '+num(r.passos)); if(r.fc) L.push('FC de repouso (média): '+r.fc+' bpm');
+  return L.join('\n');
+}
+function telaRelatorio(){
+  const off=S.relOff||0, r=dadosSemana(off);
+  let o=header('Resumo da semana',true);
+  o+=`<div class="chips" role="group" aria-label="Escolher semana"><button class="chip" aria-pressed="${off===0}" data-act="relSemana" data-o="0">Esta semana</button><button class="chip" aria-pressed="${off===1}" data-act="relSemana" data-o="1">Semana passada</button></div><span class="small muted">${h(dataBR(r.ini))} a ${h(dataBR(r.fim))}</span>`;
+  const pct=r.meta?Math.min(100,Math.round(r.treinos.length/r.meta*100)):0;
+  o+=`<div class="grid2"><div class="tile"><span class="small muted" style="font-weight:600">Treinos</span><span class="num">${r.treinos.length}${r.meta?' <small>de '+r.meta+'</small>':''}</span></div><div class="tile"><span class="small muted" style="font-weight:600">Cardio</span><span class="num">${r.cardioMin} <small>min</small></span></div></div>`;
+  if(r.meta) o+=`<div class="macro" role="img" aria-label="${pct}% dos treinos da semana"><i style="flex:${pct};background:var(--accent)"></i><i style="flex:${100-pct};background:var(--line,#0001)"></i></div>`;
+  o+=`<div class="card stack-s"><h3>Treinos</h3>${r.treinos.length?r.treinos.map(t=>`<span class="small">${h(dataCurta(t.data))} · Treino ${h(t.dia)}</span>`).join(''):'<span class="small muted">Nenhum treino registrado.</span>'}</div>`;
+  if(r.cardios.length) o+=`<div class="card stack-s"><h3>Cardio</h3>${r.cardios.map(x=>`<span class="small">${h(cardioTxt(x))}</span>`).join('')}</div>`;
+  o+=`<div class="card stack-s"><h3>Cargas</h3>${r.recordes.length?r.recordes.map(x=>`<span class="small"><strong>${h(x.nome)}</strong>: ${kgTxt(x.de)} → ${kgTxt(x.para)} kg</span>`).join(''):`<span class="small muted">${r.comCarga?'Cargas anotadas em '+r.comCarga+' exercícios, sem recorde novo.':'Nenhuma carga anotada na semana.'}</span>`}</div>`;
+  if(r.trocas.length) o+=`<div class="card stack-s"><h3>Trocas de exercício</h3>${r.trocas.map(x=>`<span class="small">${h(x.de)} → ${h(x.para)}</span>`).join('')}</div>`;
+  if(r.sono||r.passos||r.fc) o+=`<div class="card stack-s"><h3>Relógio (média da semana)</h3>${r.sono?`<span class="small">Sono: ${hm(r.sono)} por noite</span>`:''}${r.passos?`<span class="small">Passos: ${num(r.passos)} por dia</span>`:''}${r.fc?`<span class="small">FC de repouso: ${r.fc} bpm</span>`:''}</div>`;
+  o+=`<div class="grid2"><button class="btn ghost" data-act="relCompartilhar">Compartilhar</button><button class="btn" data-act="relIA"${iaPronta()?'':' disabled'}>Análise do instrutor</button></div>`;
+  return o;
+}
 function telaEvolucao(){
   const vistos=new Set(), itens=[];
   for(const d of ((S.plano&&S.plano.treino&&S.plano.treino.dias)||[])) (d.exercicios||[]).forEach((e,i)=>{ const c=chaveCarga(e); if(vistos.has(c)) return; vistos.add(c); const pts=pontosCarga(sessoesCarga(e)); if(pts.length) itens.push({e,k:d.id+i,pts,r:resumoEvolucao(pts)}); });
@@ -2225,14 +2291,12 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='trocarSenha'){S.editPerfil=false;S.sub='senha';S.erro=null;render();window.scrollTo(0,0);}
   else if(a==='pularCfg'){S.cfgVisto=true;lsSet('cfgVisto',true);render();window.scrollTo(0,0);}
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
-  else if(a==='exportar'){
-    const dados={app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,fotosCorpo:S.fotosCorpo||[],exames:S.exames,plano:S.plano,registro:S.registro};
-    if(NATIVO){ try{ await navigator.clipboard.writeText(JSON.stringify(dados)); toast('Cópia copiada. Cole num e-mail ou no WhatsApp para você mesmo e guarde.'); }catch(e){ toast('Não consegui copiar. Faça a cópia pelo app no Chrome.'); } return; }
-    const blob=new Blob([JSON.stringify(dados,null,1)],{type:'application/json'});
-    const u=URL.createObjectURL(blob); const ln=document.createElement('a'); ln.href=u; ln.download='treino-nutricao-'+hoje()+'.json';
-    document.body.appendChild(ln); ln.click(); ln.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000);
-    toast('Cópia salva em Downloads. A chave de API não vai junto.');
-  }
+  else if(a==='exportar'){ await exportarCopia(false); }
+  else if(a==='nuvem'){ await exportarCopia(true); }
+  else if(a==='relatorio'){ S.sub='relatorio'; S.relOff=0; render(); window.scrollTo(0,0); }
+  else if(a==='relSemana'){ S.relOff=+t.dataset.o||0; render(); }
+  else if(a==='relCompartilhar'){ const tx=relatorioTexto(dadosSemana(S.relOff||0)); try{ if(navigator.share){ await navigator.share({title:'Resumo da semana',text:tx}); } else { await navigator.clipboard.writeText(tx); toast('Resumo copiado.'); } }catch(e){ try{ await navigator.clipboard.writeText(tx); toast('Resumo copiado.'); }catch(e2){} } }
+  else if(a==='relIA'){ S.sub='chat'; render(); window.scrollTo(0,0); perguntar('Analise minha semana de treino e dê 3 ajustes práticos para a próxima:\n'+relatorioTexto(dadosSemana(S.relOff||0))); }
 });
 
 function compararExames(atual,novo){
@@ -2367,7 +2431,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=32;
+const VERSAO_APP=33;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){

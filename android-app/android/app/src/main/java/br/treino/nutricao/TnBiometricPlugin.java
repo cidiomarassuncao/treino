@@ -1,6 +1,8 @@
 package br.treino.nutricao;
 
+import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.net.Uri;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
@@ -10,12 +12,16 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.content.pm.PackageInfoCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.concurrent.Executor;
 import javax.crypto.Cipher;
@@ -50,6 +56,37 @@ public class TnBiometricPlugin extends Plugin {
             call.resolve(o);
         } catch (Exception e) {
             call.reject("Não consegui ler a versão do app.", "ERRO_VERSAO");
+        }
+    }
+
+    /** Grava a cópia dos dados num arquivo temporário e abre a lista de apps (OneDrive, Drive, e-mail...). */
+    @PluginMethod
+    public void compartilhar(PluginCall call) {
+        String nome = call.getString("nome", "copia.json");
+        String dados = call.getString("dados");
+        if (dados == null || dados.isEmpty()) {
+            call.reject("Sem dados para guardar.", "SEM_DADOS");
+            return;
+        }
+        try {
+            File dir = new File(getContext().getCacheDir(), "copias");
+            dir.mkdirs();
+            File[] antigos = dir.listFiles();
+            if (antigos != null) for (File a : antigos) a.delete();
+            File arq = new File(dir, nome.replaceAll("[^A-Za-z0-9._-]", "_"));
+            FileOutputStream out = new FileOutputStream(arq);
+            out.write(dados.getBytes(StandardCharsets.UTF_8));
+            out.close();
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", arq);
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType("application/json");
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.putExtra(Intent.EXTRA_SUBJECT, "Cópia do app de treino");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().startActivity(Intent.createChooser(i, "Guardar a cópia em…"));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Não consegui preparar a cópia.", "ERRO_COPIA");
         }
     }
 
