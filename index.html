@@ -701,7 +701,7 @@ function contexto(){
   const p=S.perfil||{};
   const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,refCurta(i.referencia),i.situacao,(i.anteriores&&i.anteriores.length)?'antes: '+i.anteriores.map(a=>a.valor+' em '+a.data).join(', '):''].filter(Boolean).join(' | '))}));
   const rs=resumoSaude(), cd=cardiosParaIA();
-  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'')+(cd.length?'\nCARDIOS FEITOS NOS DIAS LIVRES (últimos 14 dias): '+JSON.stringify(cd):'');
+  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'')+(cd.length?'\nCARDIOS FEITOS NOS DIAS LIVRES (últimos 14 dias): '+JSON.stringify(cd):'')+(trocasParaIA().length?'\nTROCAS DE EXERCÍCIO ESCOLHIDAS PELO USUÁRIO: '+JSON.stringify(trocasParaIA()):'');
 }
 
 const REGRAS = `Você atua ao mesmo tempo como nutricionista esportivo, avaliador físico e personal trainer, falando português do Brasil, com linguagem simples e direta.
@@ -1501,7 +1501,8 @@ function detalheDia(iso){
   const dias=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[];
   const lin=tr.map(t=>{ const d=dias.find(x=>x.id===t.dia); return `<div class="row between" style="gap:8px"><span><strong>Treino ${h(t.dia)}</strong>${d?' · '+h(d.titulo):''}</span><button class="chip" style="min-height:44px;flex:none;padding:0 12px" data-act="regRem" data-d="${h(iso)}" data-dia="${h(t.dia)}" aria-label="Remover o registro do treino ${h(t.dia)} deste dia">Remover</button></div>`; }).join('')
     +cd.map(c=>`<span class="small">Cardio: ${h(cardioTxt(c))}</span>`).join('');
-  return `<div class="card stack-s" role="status"><span class="small muted" style="font-weight:600">${h(nome.charAt(0).toUpperCase()+nome.slice(1))}</span>${lin||'<span class="small muted">Nenhum treino ou cardio registrado neste dia.</span>'}</div>`;
+  const add=iso<=hoje()?`<button class="chip" style="min-height:44px;align-self:flex-start" data-act="treinoPassado" data-d="${h(iso)}">Registrar treino neste dia</button>`:'';
+  return `<div class="card stack-s" role="status"><span class="small muted" style="font-weight:600">${h(nome.charAt(0).toUpperCase()+nome.slice(1))}</span>${lin||'<span class="small muted">Nenhum treino ou cardio registrado neste dia.</span>'}${add}</div>`;
 }
 function faixaSemana(){
   const d=new Date(); const dow=(d.getDay()+6)%7; const seg=new Date(d); seg.setDate(d.getDate()-dow);
@@ -1641,13 +1642,14 @@ function telaTreino(){
   if(!S.plano) return `<h1>Treino</h1>${semPlano()}`;
   const t=S.plano.treino; if(!S.dia) S.dia=proximoDia().id;
   const d=t.dias.find(x=>x.id===S.dia)||t.dias[0];
-  const ex=d.exercicios||[]; const feitos=ex.filter((_,i)=>S.feitos[d.id+i]).length;
+  const ex=(d.exercicios||[]).map(exEfetivo); const feitos=ex.filter((_,i)=>S.feitos[d.id+i]).length;
   let o=`<div class="stack-s" style="gap:2px"><h1>Treino</h1><span class="small muted">Divisão ${h(t.divisao||t.dias.map(x=>x.id).join(''))}${t.semanas?' · '+h(t.semanas)+' semanas':''}</span></div>`;
   o+=`<div class="tabs" role="group" aria-label="Escolher treino">${t.dias.map(x=>`<button class="chip" aria-pressed="${x.id===d.id}" data-act="dia" data-dia="${h(x.id)}" aria-label="Treino ${h(x.id)}: ${h(x.titulo)}${feitoHoje(x.id)?', feito hoje':''}">${h(x.id)}${feitoHoje(x.id)?' ✓':''}</button>`).join('')}</div>`;
   o+=`<div class="row between" style="align-items:flex-end;gap:12px"><div class="stack-s" style="gap:2px;min-width:0"><h2>${h(d.titulo)}</h2><span class="small muted">${ex.length} exercícios · cerca de ${h(d.duracao_min||'')} min</span></div><span class="small" style="font-weight:700;color:var(--accent-ink);white-space:nowrap">${feitos} de ${ex.length}</span></div>`;
   if(t.orientacao) o+=`<p class="small muted">${h(t.orientacao)}</p>`;
-  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i]; const cg=cargaCurta(e); return `<div class="ex${on?' feito':''}"><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)} <span class="cv" aria-hidden="true">›</span></strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · '+h(e.descanso):''}</span></span><button class="carga-btn${cg.vazio?' vazio':''}" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}. ${h(resumoCarga(e))}">${h(cg.t)}</button></div>`;}).join('')}</div>`;
+  o+=`<div class="stack-s">${ex.map((e,i)=>{const on=!!S.feitos[d.id+i]; const cg=cargaCurta(e); return `<div class="ex${on?' feito':''}"><button class="check" aria-pressed="${on}" data-act="feito" data-k="${h(d.id+i)}" aria-label="Marcar ${h(e.nome)} como feito">${on?ICON.check:''}</button><span class="txt" role="button" tabindex="0" data-act="exVer" data-k="${h(d.id+i)}" aria-label="Ver como fazer ${h(e.nome)}" style="cursor:pointer"><strong>${h(e.nome)}${e.subDe?' <span class="small muted" style="font-weight:400">(no lugar de '+h(e.subDe)+')</span>':''} <span class="cv" aria-hidden="true">›</span></strong><span class="small muted">${h(e.series)} × ${h(e.reps)}${e.descanso?' · '+h(e.descanso):''}</span></span><button class="carga-btn${cg.vazio?' vazio':''}" data-act="carga" data-k="${h(d.id+i)}" aria-label="Anotar carga de ${h(e.nome)}. ${h(resumoCarga(e))}">${h(cg.t)}</button></div>`;}).join('')}</div>`;
   o+=feitoHoje(d.id)?`<div class="stack-s"><p class="status ok row">${ICON.check}<span>Treino ${h(d.id)} feito hoje. Bom trabalho.</span></p><button class="btn plain block" data-act="desconcluir" data-dia="${h(d.id)}">Desfazer a conclusão do treino ${h(d.id)}</button></div>`:`<button class="btn block" data-act="concluir" data-dia="${h(d.id)}">Concluir treino ${h(d.id)}</button>`;
+  o+=`<button class="btn plain block" data-act="treinoPassado">Esqueci de registrar um treino de outro dia</button>`;
   o+=cardioHtml(t.cardio);
   const semAlt=!t.dias.some(x=>(x.exercicios||[]).some(e=>e.alternativas&&e.alternativas.length));
   o+=`<div class="list"><button class="li btn-li" data-act="evolucao"><span class="txt"><strong>Evolução das cargas</strong></span>${ICON.arrow}</button>${semAlt?`<button class="li btn-li" data-act="pedirAlternativas"${iaPronta()?'':' disabled'}><span class="txt"><strong>Pedir alternativas</strong><span class="small muted">Uma opção de troca para cada exercício</span></span>${ICON.arrow}</button>`:''}<button class="li btn-li" data-act="pedirMudancaTreino"${iaPronta()?'':' disabled'}><span class="txt"><strong>Pedir mudança ao instrutor</strong></span>${ICON.arrow}</button></div>`;
@@ -1816,7 +1818,7 @@ async function abrirExercicio(e,foco){
     ${info?`<span class="small muted">${info}</span>`:''}${e.dica?`<p class="small">${h(e.dica)}</p>`:''}
     <div id="exmImg" class="small muted" aria-live="polite">Procurando a imagem…</div>
     <div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent('como fazer '+nome)}">Ver vídeo</a><a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(nome+' exercício')}">Mais imagens</a></div>
-    ${alts.length?`<div class="stack-s"><span class="small muted" style="font-weight:600">Alternativas (toque para ver)</span><div class="chips">${alts.map(a=>`<button class="chip" data-act="exVer" data-nome="${h(a)}">${h(a)}</button>`).join('')}</div></div>`:''}</div>`;
+    ${subHtml(e)}${alts.length?`<div class="stack-s"><span class="small muted" style="font-weight:600">Alternativas (toque para ver)</span><div class="chips">${alts.map(a=>`<button class="chip" data-act="exVer" data-nome="${h(a)}">${h(a)}</button>`).join('')}</div></div>`:''}</div>`;
   m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
   document.body.appendChild(m); document.body.style.overflow='hidden'; const x=document.getElementById('exmX'); if(x) x.focus();
   const r=await acharExercicio(e); const box=document.getElementById('exmImg'); if(!box||!document.getElementById('exModal')) return;
@@ -1833,7 +1835,31 @@ async function exEscolherOutra(){
   box.className='';
   box.innerHTML='<p class="small" style="font-weight:600">Toque na imagem que mostra o seu exercício</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+c.map(x=>'<button class="btn ghost" data-act="exEscolhe" data-id="'+h(x.id)+'" style="padding:6px;display:block;text-align:center"><img src="'+EX_IMG[0]+x.images[0]+'" data-alt="'+EX_IMG[1]+x.images[0]+'" alt="" loading="lazy" style="width:100%;border-radius:8px" onerror="if(this.dataset.alt&&this.src!==this.dataset.alt){this.src=this.dataset.alt}"><span class="small" style="display:block">'+h(x.name)+'</span></button>').join('')+'</div>';
 }
-function exercicioPorChave(k){ const ds=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[]; for(const d of ds){ const ex=d.exercicios||[]; for(let i=0;i<ex.length;i++) if(d.id+i===k) return ex[i]; } return null; }
+function exercicioPorChave(k){ const ds=(S.plano&&S.plano.treino&&S.plano.treino.dias)||[]; for(const d of ds){ const ex=d.exercicios||[]; for(let i=0;i<ex.length;i++) if(d.id+i===k) return exEfetivo(ex[i]); } return null; }
+// Troca de exercício escolhida pelo usuário: S.registro.subs[nome original] = {nome, d}; S.registro.subLog = histórico
+function exEfetivo(e){
+  const sub=((S.registro&&S.registro.subs)||{})[semAcento(e.nome)];
+  if(!sub||!sub.nome) return e;
+  const alts=[e.nome].concat((e.alternativas||[]).filter(a=>semAcento(a)!==semAcento(sub.nome)));
+  return Object.assign({},e,{nome:sub.nome,subDe:e.nome,orig:e,alternativas:alts,dica:''});
+}
+async function subSalvar(nome){
+  const base=EX_ATUAL&&(EX_ATUAL.orig||EX_ATUAL); if(!base) return;
+  const chave=semAcento(base.nome), subs=Object.assign({},(S.registro.subs||{}));
+  const volta=!nome||semAcento(nome)===chave;
+  if(volta) delete subs[chave]; else subs[chave]={nome:nome,d:hoje()};
+  const log=(S.registro.subLog||[]).concat([{d:hoje(),de:base.nome,para:volta?base.nome:nome}]).slice(-100);
+  S.registro=Object.assign({},S.registro,{subs,subLog:log}); await save('registro',S.registro);
+  fecharExercicio(); toast(volta?'Voltou para '+base.nome+'.':'Troca registrada: '+nome+' no lugar de '+base.nome+'.'); render();
+}
+function subHtml(e){
+  if(e.subDe) return `<div class="card stack-s"><span class="small">Você está fazendo <strong>${h(e.nome)}</strong> no lugar de <strong>${h(e.subDe)}</strong>.</span><button class="btn plain block" data-act="subSalvar" data-nome="">Voltar para ${h(e.subDe)}</button></div>`;
+  if(e.orig) return `<div class="card stack-s"><span class="small">Fez este no lugar de <strong>${h(e.orig.nome)}</strong>?</span><button class="btn block" data-act="subSalvar" data-nome="${h(e.nome)}">Registrar a troca</button></div>`;
+  return '';
+}
+function trocasParaIA(){
+  const subs=(S.registro&&S.registro.subs)||{}; return Object.keys(subs).map(k=>({no_lugar_de:k,faz_agora:subs[k].nome,desde:subs[k].d}));
+}
 document.addEventListener('keydown',(ev)=>{
   if(ev.key==='Escape'&&document.getElementById('exModal')){ fecharExercicio(); return; }
   if(ev.key==='Tab'){ const m=document.getElementById('exModal'); if(m){ const f=[...m.querySelectorAll('button,a[href],input')]; if(f.length){ const a=f[0],z=f[f.length-1]; if(ev.shiftKey&&document.activeElement===a){ ev.preventDefault(); z.focus(); } else if(!ev.shiftKey&&document.activeElement===z){ ev.preventDefault(); a.focus(); } } } }
@@ -1885,6 +1911,30 @@ async function salvarCarga(){
   S.registro=Object.assign({},S.registro,{cargas:todas}); await save('registro',S.registro);
   const maxAntes=Math.max(0,...antes.map(x=>Math.max(0,...x.s.map(y=>y.kg||0)))), maxHoje=Math.max(0,...s.map(y=>y.kg||0));
   fecharExercicio(); toast(!s.length?'Carga de hoje removida.':(maxAntes>0&&maxHoje>maxAntes?'Novo recorde: '+kgTxt(maxHoje)+' kg!':'Carga anotada.')); render();
+}
+// ===== Registrar um treino feito em outra data (quando esqueceu de concluir no dia) =====
+function abrirTreinoPassado(iso,foco){
+  if(!S.plano) return; fecharExercicio(); EX_FOCO=foco||null;
+  const dias=S.plano.treino.dias, ontem=new Date(); ontem.setDate(ontem.getDate()-1);
+  const dt=(/^\d{4}-\d{2}-\d{2}$/.test(iso)&&iso<=hoje())?iso:isoData(ontem), pre=S.dia||proximoDia().id;
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><h2 id="exmTit">Registrar treino de outro dia</h2><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
+    <label class="f">Qual treino você fez?<select id="tpDia">${dias.map(d=>`<option value="${h(d.id)}"${d.id===pre?' selected':''}>Treino ${h(d.id)} · ${h(d.titulo)}</option>`).join('')}</select></label>
+    <label class="f">Data<input id="tpData" type="date" value="${h(dt)}" max="${hoje()}"></label>
+    <div id="tpErro" class="status bad row" role="alert" hidden></div>
+    <button type="button" class="btn block" data-act="treinoPassadoSalvar">Salvar</button></div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden'; const p=document.getElementById('tpDia'); if(p) p.focus();
+}
+async function salvarTreinoPassado(){
+  const g=(id)=>document.getElementById(id); if(!g('tpData')) return;
+  const erro=(t)=>{ const e=g('tpErro'); e.hidden=false; e.textContent=t; };
+  const d=g('tpData').value, dia=g('tpDia').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>hoje()) return erro('Escolha uma data de hoje ou de um dia que já passou.');
+  if((S.registro.treinos||[]).some(x=>x.data===d&&x.dia===dia)) return erro('O treino '+dia+' já está registrado nesse dia.');
+  const lista=(S.registro.treinos||[]).concat([{data:d,dia}]).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0).slice(-200);
+  S.registro=Object.assign({},S.registro,{treinos:lista}); await save('registro',S.registro);
+  S.diaSel=d; fecharExercicio(); toast('Treino '+dia+' registrado em '+dataBR(d)+'.'); render();
 }
 // ===== Cardio feito nos dias livres (guardado em S.registro.cardios, dentro da cópia de segurança) =====
 const CARDIO_TIPOS=['Caminhada','Corrida','Esteira','Bicicleta','Bicicleta ergométrica','Elíptico','Natação','Remo','Pular corda','Outro'];
@@ -2070,8 +2120,11 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='chat'){S.sub='chat';render();window.scrollTo(0,0);}
   else if(a==='abrirTreino'){S.tab='treino';S.dia=t.dataset.dia;S.sub=null;render();window.scrollTo(0,0);}
   else if(a==='dia'){S.dia=t.dataset.dia;render();}
-  else if(a==='exVer'){ const e=t.dataset.nome?{nome:t.dataset.nome}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
+  else if(a==='exVer'){ const base=EX_ATUAL&&(EX_ATUAL.orig||EX_ATUAL); const e=t.dataset.nome?{nome:t.dataset.nome,orig:base,series:base&&base.series,reps:base&&base.reps,descanso:base&&base.descanso}:exercicioPorChave(t.dataset.k); if(e) abrirExercicio(e,t.dataset.nome?EX_FOCO:t); }
   else if(a==='exFechar'){ fecharExercicio(); }
+  else if(a==='subSalvar'){ await subSalvar(t.dataset.nome); }
+  else if(a==='treinoPassado'){ abrirTreinoPassado(t.dataset.d||'',t); }
+  else if(a==='treinoPassadoSalvar'){ await salvarTreinoPassado(); }
   else if(a==='exOutras'){ exEscolherOutra(); }
   else if(a==='exEscolhe'){ const e=EX_ATUAL; if(e){ exMapaSet(semAcento(e.nome),t.dataset.id); abrirExercicio(e,EX_FOCO); } }
   else if(a==='tema'){ try{ localStorage.setItem('tn_tema',t.dataset.t); }catch(e){} aplicarTema(); render(); }
@@ -2314,7 +2367,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=31;
+const VERSAO_APP=32;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
