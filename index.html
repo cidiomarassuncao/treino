@@ -1613,16 +1613,45 @@ function telaComparar(){
   const linhas=[]; const vistos=new Set();
   for(const i of (B.itens||[])){ const k=normNome(i.nome); if(!k||vistos.has(k)) continue; vistos.add(k); const a=mapa.get(k); if(a) linhas.push({nome:i.nome,un:i.unidade||a.unidade||'',a,b:i,c:compararItem(a,i)}); }
   const n=(e)=>linhas.filter(l=>l.c.est===e).length;
-  o+=`<div class="grid3"><div class="tile"><span class="small muted" style="font-weight:600">Melhoraram</span><span class="num">${n('melhorou')}</span></div><div class="tile"><span class="small muted" style="font-weight:600">Pioraram</span><span class="num">${n('piorou')}</span></div><div class="tile"><span class="small muted" style="font-weight:600">Iguais</span><span class="num">${n('igual')+n('mudou')}</span></div></div>`;
+  const F=S.cmpF||'todos', V=S.cmpV||'lista';
+  const tile=(f,rot,v)=>`<button type="button" class="tile" style="text-align:left;cursor:pointer;border:${F===f?'2px solid var(--accent)':'1px solid transparent'};font:inherit" data-act="cmpFiltro" data-f="${f}" aria-pressed="${F===f}"><span class="small muted" style="font-weight:600">${rot}</span><span class="num">${v}</span></button>`;
+  o+=`<div class="grid3">${tile('melhorou','Melhoraram',n('melhorou'))}${tile('piorou','Pioraram',n('piorou'))}${tile('mudou','Iguais ou quase',n('igual')+n('mudou'))}</div>`;
+  if(F!=='todos') o+=`<button class="chip" data-act="cmpFiltro" data-f="todos">Mostrar todos os ${linhas.length}</button>`;
+  o+=`<div class="chips" role="group" aria-label="Forma de ver"><button class="chip" aria-pressed="${V==='lista'}" data-act="cmpVista" data-v="lista">Lista</button><button class="chip" aria-pressed="${V==='grafico'}" data-act="cmpVista" data-v="grafico">Gráfico</button></div>`;
   if(!linhas.length) return o+`<p class="muted">Esses dois exames não têm valores com o mesmo nome para comparar.</p>`;
   const cor={melhorou:'var(--ok,#1a7f4b)',piorou:'var(--bad,#b3261e)',igual:'var(--muted)',mudou:'var(--muted)'};
   const seta={melhorou:'▲ melhorou',piorou:'▼ piorou',igual:'= igual',mudou:'mudou'};
   const ordem={piorou:0,melhorou:1,mudou:2,igual:3};
-  o+=`<div class="card" style="padding:4px 16px">${linhas.sort((x,y)=>ordem[x.c.est]-ordem[y.c.est]).map((l,ix)=>{ const c=l.c; const var_=c.dif!=null&&c.dif!==0?(c.dif>0?'+':'')+virgula(c.dif)+(c.pct!=null?' ('+(c.pct>0?'+':'')+virgula(c.pct)+'%)':''):'';
-    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 0;${ix?'border-top:1px solid var(--line,rgba(0,0,0,.08));':''}"><div style="min-width:0;flex:1"><div style="font-weight:700;font-size:15px">${h(l.nome)}</div><div class="small muted" style="margin-top:2px">${h(l.a.valor)} → <b style="color:var(--fg)">${h(l.b.valor)}</b> ${h(l.un)}${var_?' · '+h(var_):''}</div></div><div class="small" style="flex:none;font-weight:700;color:${cor[c.est]};white-space:nowrap;text-align:right">${seta[c.est]}</div></div>`; }).join('')}</div>`;
+  let vis=linhas.filter(l=>F==='todos'||(F==='mudou'?(l.c.est==='mudou'||l.c.est==='igual'):l.c.est===F)).sort((x,y)=>ordem[x.c.est]-ordem[y.c.est]);
+  if(V==='grafico'){
+    const gl=vis.filter(l=>l.c.pct!=null&&l.c.pct!==0).sort((x,y)=>Math.abs(y.c.pct)-Math.abs(x.c.pct)); const mx=Math.max(1,...gl.map(l=>Math.abs(l.c.pct)));
+    o+=`<div class="card stack-s"><h3>Variação em %</h3><span class="small muted">Do lado direito o valor subiu, do esquerdo desceu. A cor mostra se foi bom ou ruim. Toque numa barra para ver a evolução.</span>${gl.length?gl.map(l=>{ const w=Math.max(2,Math.round(Math.abs(l.c.pct)/mx*50)), pos=l.c.pct>0;
+      return `<button type="button" data-act="cmpItem" data-n="${h(normNome(l.nome))}" style="all:unset;cursor:pointer;display:block;padding:6px 0" aria-label="${h(l.nome)}: ${virgula(l.c.pct)}%, ${seta[l.c.est]}"><div class="small" style="display:flex;justify-content:space-between;gap:8px"><span style="min-width:0">${h(l.nome)}</span><b style="color:${cor[l.c.est]};white-space:nowrap">${pos?'+':''}${virgula(l.c.pct)}%</b></div><div style="position:relative;height:12px;margin-top:3px;background:var(--surface-2,rgba(0,0,0,.05));border-radius:6px"><i style="position:absolute;top:0;bottom:0;${pos?'left:50%':'right:50%'};width:${w}%;background:${cor[l.c.est]};opacity:${l.c.est==='mudou'||l.c.est==='igual'?.45:.9};border-radius:${pos?'0 6px 6px 0':'6px 0 0 6px'}"></i><i style="position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:var(--muted);opacity:.5"></i></div></button>`; }).join(''):'<span class="small muted">Nenhum valor numérico com variação neste filtro.</span>'}</div>`;
+  } else {
+    o+=`<div class="card" style="padding:4px 16px">${vis.length?vis.map((l,ix)=>{ const c=l.c; const var_=c.dif!=null&&c.dif!==0?(c.dif>0?'+':'')+virgula(c.dif)+(c.pct!=null?' ('+(c.pct>0?'+':'')+virgula(c.pct)+'%)':''):'';
+      return `<button type="button" data-act="cmpItem" data-n="${h(normNome(l.nome))}" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 0;width:100%;box-sizing:border-box;${ix?'border-top:1px solid var(--line,rgba(0,0,0,.08));':''}"><span style="min-width:0;flex:1"><span style="display:block;font-weight:700;font-size:15px">${h(l.nome)}</span><span class="small muted" style="display:block;margin-top:2px">${h(l.a.valor)} → <b style="color:var(--fg)">${h(l.b.valor)}</b> ${h(l.un)}${var_?' · '+h(var_):''}</span></span><span class="small" style="flex:none;font-weight:700;color:${cor[c.est]};white-space:nowrap;text-align:right">${seta[c.est]} ›</span></button>`; }).join(''):'<p class="small muted" style="padding:12px 0">Nenhum valor neste filtro.</p>'}</div>`;
+  }
   o+=`<p class="note">Melhorou quer dizer que o valor entrou na faixa de referência ou chegou mais perto dela. Mudanças pequenas dentro da faixa aparecem como "mudou". O app não faz diagnóstico: converse com seu médico.</p>`;
   o+=`<button class="btn block" data-act="cmpIA"${iaPronta()?'':' disabled'}>Pedir análise ao instrutor</button>`;
   return o;
+}
+function abrirItemExame(chave){
+  const g=S.cmpG||(gruposComparaveis()[0]||{}).id; const lista=examesDoGrupo(g).slice().reverse();
+  const pts=[]; let nome='', un='';
+  for(const e of lista){ const i=(e.itens||[]).find(x=>normNome(x.nome)===chave); if(!i) continue; nome=i.nome; un=i.unidade||un; const v=numBR(i.valor); pts.push({d:e.data,v:isFinite(v)?v:null,t:i.valor,sit:i.situacao,ref:i.referencia}); }
+  fecharExercicio();
+  const num_=pts.filter(x=>x.v!=null); let svg='';
+  if(num_.length>=2){ const W=300,H=140,pl=34,pr=10,pt=12,pb=22; const mn=Math.min(...num_.map(x=>x.v)), mxv=Math.max(...num_.map(x=>x.v)), sp=(mxv-mn)||1;
+    const X=(i)=>pl+(W-pl-pr)*(i/(pts.length-1)), Y=(v)=>pt+(H-pt-pb)*(1-(v-mn)/sp);
+    const linha=pts.map((x,i)=>x.v==null?null:X(i).toFixed(1)+','+Y(x.v).toFixed(1)).filter(Boolean).join(' ');
+    svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução de ${h(nome)}" style="width:100%;height:auto"><text x="2" y="${pt+4}" font-size="10" fill="currentColor" opacity=".6">${virgula(Math.round(mxv*100)/100)}</text><text x="2" y="${H-pb}" font-size="10" fill="currentColor" opacity=".6">${virgula(Math.round(mn*100)/100)}</text><polyline points="${linha}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((x,i)=>x.v==null?'':`<circle cx="${X(i).toFixed(1)}" cy="${Y(x.v).toFixed(1)}" r="4" fill="${x.sit==='alto'||x.sit==='baixo'?'var(--bad,#b3261e)':'var(--accent)'}"/><text x="${X(i).toFixed(1)}" y="${H-6}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${mesAno(x.d)}</text>`).join('')}</svg>`; }
+  const m=document.createElement('div'); m.id='exModal'; m.className='exm'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-labelledby','exmTit');
+  m.innerHTML=`<div class="exm-box"><div class="row between" style="align-items:flex-start;gap:10px"><h2 id="exmTit" style="min-width:0">${h(nome)}</h2><button class="btn plain" id="exmX" data-act="exFechar" style="flex:none">Fechar</button></div>
+    ${svg||'<p class="small muted">São precisos pelo menos dois valores numéricos para desenhar o gráfico.</p>'}
+    <div class="stack-s" style="gap:4px">${pts.slice().reverse().map(x=>`<div class="row between small" style="gap:8px"><span>${h(fmtData(x.d))}</span><span><b>${h(x.t)}</b> ${h(un)} ${x.sit==='alto'?'· acima':x.sit==='baixo'?'· abaixo':''}</span></div>`).join('')}</div>
+    ${(pts[pts.length-1]||{}).ref?`<p class="small muted">Referência: ${h(refCurta(refDaPessoa(pts[pts.length-1].ref,S.perfil)))}</p>`:''}</div>`;
+  m.addEventListener('click',(ev)=>{ if(ev.target===m) fecharExercicio(); });
+  document.body.appendChild(m); document.body.style.overflow='hidden'; const x=document.getElementById('exmX'); if(x) x.focus();
 }
 function comparativoTexto(){
   const lista=examesDoGrupo(S.cmpG||(gruposComparaveis()[0]||{}).id); if(lista.length<2) return '';
@@ -2347,6 +2376,9 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='exportar'){ await exportarCopia(false); }
   else if(a==='nuvem'){ await exportarCopia(true); }
   else if(a==='comparar'){ S.sub='comparar'; S.cmpA=S.cmpB=null; render(); window.scrollTo(0,0); }
+  else if(a==='cmpFiltro'){ S.cmpF=(S.cmpF===t.dataset.f&&t.dataset.f!=='todos')?'todos':t.dataset.f; render(); }
+  else if(a==='cmpVista'){ S.cmpV=t.dataset.v; render(); }
+  else if(a==='cmpItem'){ abrirItemExame(t.dataset.n); }
   else if(a==='cmpGrupo'){ S.cmpG=t.dataset.g; S.cmpA=S.cmpB=null; render(); }
   else if(a==='cmpIA'){ const tx=comparativoTexto(); if(tx){ S.sub='chat'; render(); window.scrollTo(0,0); perguntar(tx); } }
   else if(a==='relatorio'){ S.sub='relatorio'; S.relOff=0; render(); window.scrollTo(0,0); }
@@ -2488,7 +2520,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=35;
+const VERSAO_APP=36;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
