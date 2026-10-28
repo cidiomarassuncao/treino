@@ -1618,8 +1618,8 @@ function telaComparar(){
   const cor={melhorou:'var(--ok,#1a7f4b)',piorou:'var(--bad,#b3261e)',igual:'var(--muted)',mudou:'var(--muted)'};
   const seta={melhorou:'▲ melhorou',piorou:'▼ piorou',igual:'= igual',mudou:'mudou'};
   const ordem={piorou:0,melhorou:1,mudou:2,igual:3};
-  o+=`<div class="list">${linhas.sort((x,y)=>ordem[x.c.est]-ordem[y.c.est]).map(l=>{ const c=l.c; const var_=c.dif!=null&&c.dif!==0?(c.dif>0?'+':'')+virgula(c.dif)+(c.pct!=null?' ('+(c.pct>0?'+':'')+virgula(c.pct)+'%)':''):'';
-    return `<div class="li"><span class="txt"><strong style="font-size:15px">${h(l.nome)}</strong><span class="small muted">${h(l.a.valor)} → <b style="color:var(--fg)">${h(l.b.valor)}</b> ${h(l.un)}${var_?' · '+h(var_):''}</span></span><span class="small" style="font-weight:700;color:${cor[c.est]};white-space:nowrap">${seta[c.est]}</span></li>`; }).join('')}</div>`;
+  o+=`<div class="card" style="padding:4px 16px">${linhas.sort((x,y)=>ordem[x.c.est]-ordem[y.c.est]).map((l,ix)=>{ const c=l.c; const var_=c.dif!=null&&c.dif!==0?(c.dif>0?'+':'')+virgula(c.dif)+(c.pct!=null?' ('+(c.pct>0?'+':'')+virgula(c.pct)+'%)':''):'';
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 0;${ix?'border-top:1px solid var(--line,rgba(0,0,0,.08));':''}"><div style="min-width:0;flex:1"><div style="font-weight:700;font-size:15px">${h(l.nome)}</div><div class="small muted" style="margin-top:2px">${h(l.a.valor)} → <b style="color:var(--fg)">${h(l.b.valor)}</b> ${h(l.un)}${var_?' · '+h(var_):''}</div></div><div class="small" style="flex:none;font-weight:700;color:${cor[c.est]};white-space:nowrap;text-align:right">${seta[c.est]}</div></div>`; }).join('')}</div>`;
   o+=`<p class="note">Melhorou quer dizer que o valor entrou na faixa de referência ou chegou mais perto dela. Mudanças pequenas dentro da faixa aparecem como "mudou". O app não faz diagnóstico: converse com seu médico.</p>`;
   o+=`<button class="btn block" data-act="cmpIA"${iaPronta()?'':' disabled'}>Pedir análise ao instrutor</button>`;
   return o;
@@ -2488,7 +2488,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=34;
+const VERSAO_APP=35;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
