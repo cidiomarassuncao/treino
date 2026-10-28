@@ -1581,6 +1581,57 @@ function cartaoExame(e,maisRecente){
     </details></div>`;
 }
 
+// ===== Comparativo entre dois exames do mesmo tipo =====
+function examesDoGrupo(g){ return S.exames.filter(e=>grupoDe(e)===g).sort((x,y)=>String(y.data).localeCompare(String(x.data))); }
+function gruposComparaveis(){ return GRUPOS.filter(g=>examesDoGrupo(g.id).length>=2); }
+// compara um item entre o exame antigo (a) e o novo (b): melhorou, piorou ou ficou igual
+function compararItem(a,b){
+  const va=numBR(a.valor), vb=numBR(b.valor), ok=isFinite(va)&&isFinite(vb);
+  const dif=ok?Math.round((vb-va)*100)/100:null, pct=ok&&va?Math.round((vb-va)/Math.abs(va)*1000)/10:null;
+  const fora=(x)=>x==='alto'||x==='baixo';
+  let est='igual';
+  if(ok&&va!==vb||(!ok&&String(a.valor)!==String(b.valor))){
+    if(fora(a.situacao)&&!fora(b.situacao)) est='melhorou';
+    else if(!fora(a.situacao)&&fora(b.situacao)) est='piorou';
+    else if(fora(a.situacao)&&fora(b.situacao)&&ok) est=((a.situacao==='alto'&&vb<va)||(a.situacao==='baixo'&&vb>va))?'melhorou':'piorou';
+    else est='mudou';
+  }
+  return {va,vb,dif,pct,est};
+}
+function telaComparar(){
+  const gs=gruposComparaveis(); let o=header('Comparar exames',true);
+  if(!gs.length) return o+`<p class="muted">Você precisa de pelo menos dois exames do mesmo tipo (por exemplo, duas bioimpedâncias) para comparar.</p>`;
+  const g=gs.some(x=>x.id===S.cmpG)?S.cmpG:gs[0].id, lista=examesDoGrupo(g);
+  let idB=lista.some(e=>e.id===S.cmpB)?S.cmpB:lista[0].id;
+  let idA=lista.some(e=>e.id===S.cmpA&&e.id!==idB)?S.cmpA:(lista.find(e=>e.id!==idB)||lista[1]).id;
+  let A=lista.find(e=>e.id===idA), B=lista.find(e=>e.id===idB);
+  if(String(A.data)>String(B.data)){ const t=A; A=B; B=t; idA=A.id; idB=B.id; }
+  if(gs.length>1) o+=`<div class="chips" role="group" aria-label="Tipo de exame">${gs.map(x=>`<button class="chip" aria-pressed="${x.id===g}" data-act="cmpGrupo" data-g="${x.id}">${h(x.curto)}</button>`).join('')}</div>`;
+  const opt=(sel)=>lista.map(e=>`<option value="${h(e.id)}"${e.id===sel?' selected':''}>${h(fmtData(e.data))}${e.laboratorio?' · '+h(e.laboratorio):''}</option>`).join('');
+  o+=`<div class="grid2"><label class="f">Antes<select id="cmpA">${opt(idA)}</select></label><label class="f">Depois<select id="cmpB">${opt(idB)}</select></label></div>`;
+  const mapa=new Map(); for(const i of (A.itens||[])){ const k=normNome(i.nome); if(k&&!mapa.has(k)) mapa.set(k,i); }
+  const linhas=[]; const vistos=new Set();
+  for(const i of (B.itens||[])){ const k=normNome(i.nome); if(!k||vistos.has(k)) continue; vistos.add(k); const a=mapa.get(k); if(a) linhas.push({nome:i.nome,un:i.unidade||a.unidade||'',a,b:i,c:compararItem(a,i)}); }
+  const n=(e)=>linhas.filter(l=>l.c.est===e).length;
+  o+=`<div class="grid3"><div class="tile"><span class="small muted" style="font-weight:600">Melhoraram</span><span class="num">${n('melhorou')}</span></div><div class="tile"><span class="small muted" style="font-weight:600">Pioraram</span><span class="num">${n('piorou')}</span></div><div class="tile"><span class="small muted" style="font-weight:600">Iguais</span><span class="num">${n('igual')+n('mudou')}</span></div></div>`;
+  if(!linhas.length) return o+`<p class="muted">Esses dois exames não têm valores com o mesmo nome para comparar.</p>`;
+  const cor={melhorou:'var(--ok,#1a7f4b)',piorou:'var(--bad,#b3261e)',igual:'var(--muted)',mudou:'var(--muted)'};
+  const seta={melhorou:'▲ melhorou',piorou:'▼ piorou',igual:'= igual',mudou:'mudou'};
+  const ordem={piorou:0,melhorou:1,mudou:2,igual:3};
+  o+=`<div class="list">${linhas.sort((x,y)=>ordem[x.c.est]-ordem[y.c.est]).map(l=>{ const c=l.c; const var_=c.dif!=null&&c.dif!==0?(c.dif>0?'+':'')+virgula(c.dif)+(c.pct!=null?' ('+(c.pct>0?'+':'')+virgula(c.pct)+'%)':''):'';
+    return `<div class="li"><span class="txt"><strong style="font-size:15px">${h(l.nome)}</strong><span class="small muted">${h(l.a.valor)} → <b style="color:var(--fg)">${h(l.b.valor)}</b> ${h(l.un)}${var_?' · '+h(var_):''}</span></span><span class="small" style="font-weight:700;color:${cor[c.est]};white-space:nowrap">${seta[c.est]}</span></li>`; }).join('')}</div>`;
+  o+=`<p class="note">Melhorou quer dizer que o valor entrou na faixa de referência ou chegou mais perto dela. Mudanças pequenas dentro da faixa aparecem como "mudou". O app não faz diagnóstico: converse com seu médico.</p>`;
+  o+=`<button class="btn block" data-act="cmpIA"${iaPronta()?'':' disabled'}>Pedir análise ao instrutor</button>`;
+  return o;
+}
+function comparativoTexto(){
+  const lista=examesDoGrupo(S.cmpG||(gruposComparaveis()[0]||{}).id); if(lista.length<2) return '';
+  const B=lista.find(e=>e.id===S.cmpB)||lista[0]; let A=lista.find(e=>e.id===S.cmpA&&e.id!==B.id)||lista.find(e=>e.id!==B.id);
+  let X=A,Y=B; if(String(X.data)>String(Y.data)){ X=B; Y=A; }
+  const mapa=new Map(); for(const i of (X.itens||[])){ const k=normNome(i.nome); if(k&&!mapa.has(k)) mapa.set(k,i); }
+  const L=(Y.itens||[]).map(i=>{ const a=mapa.get(normNome(i.nome)); return a?i.nome+': '+a.valor+' → '+i.valor+' '+(i.unidade||'')+' ('+(i.situacao||'?')+')':''; }).filter(Boolean);
+  return 'Compare meus exames de '+X.data+' e '+Y.data+' e diga o que melhorou, o que piorou e o que merece conversa com o médico:\n'+L.join('\n');
+}
 function telaExames(){
   let o=`<div class="stack-s" style="gap:2px"><h1>Exames</h1><span class="small muted">Bioimpedância, sangue e avaliação física</span></div>`;
   o+=statusBox();
@@ -1590,6 +1641,7 @@ function telaExames(){
     <p class="note">Até ${MAX_PAGINAS} páginas por laudo, em PDF ou várias fotos de uma vez. Pode tirar a foto na hora: o celular oferece a câmera ao escolher o arquivo.</p>`:`<p class="small muted">Este aparelho não envia imagens para a IA. Digite ou cole os valores do laudo.</p>`}
     <button class="btn ghost block" data-act="digitar"${S.busy?' disabled':''}>Digitar os valores</button></div>`;
   o+=cartaoFotosCorpo();
+  if(gruposComparaveis().length) o+=`<button class="btn ghost block" data-act="comparar">Comparar exames</button>`;
   if(!S.exames.length){o+=`<div class="card stack-s"><h3>Nenhum exame ainda</h3><p class="small muted">Comece pela bioimpedância mais recente e pelo último exame de sangue. O avaliador compara os valores com as referências do próprio laudo.</p></div>`;return o;}
   const grupos=GRUPOS.map(g=>({...g,lista:S.exames.filter(e=>grupoDe(e)===g.id).sort((x,y)=>String(y.data).localeCompare(String(x.data)))})).filter(g=>g.lista.length);
   const filtro=grupos.some(g=>g.id===S.filtroEx)?S.filtroEx:'todos';
@@ -1708,6 +1760,7 @@ function render(){
     $nav.hidden=false;
     if(S.sub==='evolucao') html=telaEvolucao();
     else if(S.sub==='relatorio') html=telaRelatorio();
+    else if(S.sub==='comparar') html=telaComparar();
     else if(S.sub==='analise'&&S.plano) html=telaAnalise();
     else if(S.sub==='chat') html=telaChat();
     else if(S.sub==='digitar') html=telaDigitar();
@@ -2293,6 +2346,9 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='rmChave'){const c=normCfg(S.cfg);delete c.chaves[c.provedor];c.modelos[c.provedor]='';normCfg(c);lsSet('cfg',c);toast('Chave apagada.');render();}
   else if(a==='exportar'){ await exportarCopia(false); }
   else if(a==='nuvem'){ await exportarCopia(true); }
+  else if(a==='comparar'){ S.sub='comparar'; S.cmpA=S.cmpB=null; render(); window.scrollTo(0,0); }
+  else if(a==='cmpGrupo'){ S.cmpG=t.dataset.g; S.cmpA=S.cmpB=null; render(); }
+  else if(a==='cmpIA'){ const tx=comparativoTexto(); if(tx){ S.sub='chat'; render(); window.scrollTo(0,0); perguntar(tx); } }
   else if(a==='relatorio'){ S.sub='relatorio'; S.relOff=0; render(); window.scrollTo(0,0); }
   else if(a==='relSemana'){ S.relOff=+t.dataset.o||0; render(); }
   else if(a==='relCompartilhar'){ const tx=relatorioTexto(dadosSemana(S.relOff||0)); try{ if(navigator.share){ await navigator.share({title:'Resumo da semana',text:tx}); } else { await navigator.clipboard.writeText(tx); toast('Resumo copiado.'); } }catch(e){ try{ await navigator.clipboard.writeText(tx); toast('Resumo copiado.'); }catch(e2){} } }
@@ -2404,6 +2460,7 @@ document.addEventListener('submit', async (ev)=>{
   }
 });
 document.addEventListener('change',(ev)=>{
+  if(ev.target.id==='cmpA'||ev.target.id==='cmpB'){ S.cmpA=document.getElementById('cmpA').value; S.cmpB=document.getElementById('cmpB').value; render(); return; }
   if(ev.target.classList.contains('mostrar')){ const f=ev.target.closest('form'); f.querySelectorAll('input[type=password],input[data-pw]').forEach(i=>{i.dataset.pw='1';i.type=ev.target.checked?'text':'password';}); return; }
   if((ev.target.id==='rTipo'||ev.target.id==='rData')&&S.dup){ syncRev(); S.dup=null; render(); return; }
   if(ev.target.id==='cGuardei'){ S.guardei=ev.target.checked; const b=document.querySelector('[data-act=codigoOk]'); if(b) b.disabled=!S.guardei; return; }
@@ -2431,7 +2488,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=33;
+const VERSAO_APP=34;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
