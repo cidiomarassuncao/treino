@@ -211,7 +211,7 @@ const S = {
   ready:false, cfg:null,
   tab:'inicio', sub:null,
   perfil:null, foto:null, exames:[], plano:null, registro:{treinos:[]},
-  dia:null, feitos:{}, busy:null, erro:null, rascunho:null, chat:[], confirmDel:null, editPerfil:false
+  dia:null, feitos:{}, busy:null, erro:null, rascunho:null, chat:[], conversas:[], conversaId:null, histId:null, confirmDel:null, editPerfil:false
 };
 
 /* ---------- utilidades ---------- */
@@ -222,7 +222,7 @@ const fmtData = (iso)=>{if(!iso)return '';const p=String(iso).split('-');if(p.le
 const uidGen = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 /* ---------- cofre: dados criptografados (AES-GCM) com uma chave mestra.
    A chave mestra fica guardada duas vezes: travada pela senha e travada pelo código de recuperação. ---------- */
-const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto','fotosCorpo'];
+const CHAVES=['perfil','exames','plano','registro','feitos','cfg','cfgVisto','saude','foto','fotosCorpo','conversas'];
 const ITER=310000;
 const COFRE={key:null, mestra:null, cache:{}, fila:Promise.resolve()};
 const TEMAS=[['claro','Claro'],['escuro','Escuro'],['auto','Automático']];
@@ -1265,6 +1265,17 @@ function abrirRevisao(respostas,tipoInf,dataInf,avisos){ mostrarRevisao(montarRa
 
 
 let chatCtl=null;
+// Histórico: cada conversa fica guardada (criptografada, junto dos demais dados) em S.conversas
+async function arquivarConversa(){
+  const msgs=S.chat.filter(m=>!m.pend&&m.content).slice(-80).map(m=>{ const o={role:m.role,content:String(m.content).slice(0,4000)}; if(m.proposta) o.mudanca={secao:m.proposta.secao,resumo:m.proposta.resumo||'',estado:m.proposta.estado}; return o; });
+  if(!msgs.length) return;
+  if(!S.conversaId) S.conversaId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const primeira=(msgs.find(m=>m.role==='user')||msgs[0]).content;
+  const antiga=S.conversas.find(c=>c.id===S.conversaId);
+  const c={id:S.conversaId,inicio:antiga?antiga.inicio:new Date().toISOString(),fim:new Date().toISOString(),titulo:String(primeira).replace(/\s+/g,' ').slice(0,80),msgs};
+  S.conversas=[c].concat(S.conversas.filter(x=>x.id!==c.id)).slice(0,30);
+  try{ await save('conversas',S.conversas); }catch(e){}
+}
 async function perguntar(texto){
   if(!iaPronta()){S.erro=erroIA({code:'sem_chave'});render();return;}
   S.chat.push({role:'user',content:texto}); S.chat.push({role:'assistant',content:'',pend:true}); render();
@@ -1293,7 +1304,7 @@ Mantenha igual tudo o que não foi pedido. Nas refeições, o campo "trocas" é 
     else { const m=erroIA(e); alvo.content=m||'Pergunta cancelada.'; }
     alvo.pend=false;
   }
-  chatCtl=null; render(); const fim=document.getElementById('ultima'); if(fim) fim.scrollIntoView({block:'nearest'});
+  chatCtl=null; arquivarConversa(); render(); const fim=document.getElementById('ultima'); if(fim) fim.scrollIntoView({block:'nearest'});
 }
 
 // confere se a mudança proposta tem o formato do plano antes de oferecer o botão
@@ -1766,8 +1777,23 @@ function cartaoProposta(p,ix){
     <div class="grid2"><button class="btn plain" data-act="recusarProposta" data-ix="${ix}">Agora não</button><button class="btn" data-act="aplicarProposta" data-ix="${ix}">Aplicar ao plano</button></div></div>`;
 }
 
+function telaHistorico(){
+  const c=S.histId&&S.conversas.find(x=>x.id===S.histId);
+  const dt=(iso)=>{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
+  if(c){
+    let o=header('Conversa de '+dt(c.inicio).split(' · ')[0],true);
+    o+=`<div class="stack" style="gap:10px">${c.msgs.map(m=>`<div class="bubble ${m.role==='user'?'me':'ai'}">${h(m.content)}</div>${m.mudanca?`<div class="card small muted" style="align-self:stretch">Mudança sugerida no ${m.mudanca.secao==='dieta'?'plano alimentar':'treino'}${m.mudanca.resumo?': '+h(m.mudanca.resumo):''} · ${m.mudanca.estado==='aplicada'?'aplicada':m.mudanca.estado==='desfeita'?'desfeita':m.mudanca.estado==='recusada'?'não aplicada':'não decidida'}</div>`:''}`).join('')}</div>`;
+    o+=`<div class="grid2"><button class="btn" data-act="histContinuar" data-id="${h(c.id)}">Continuar conversa</button><button class="btn plain" data-act="histApagar" data-id="${h(c.id)}">Apagar</button></div>`;
+    return o;
+  }
+  let o=header('Histórico com o instrutor',true);
+  if(!S.conversas.length) return o+`<p class="muted">Nenhuma conversa guardada ainda. As próximas ficam aqui, criptografadas junto com seus dados.</p>`;
+  o+=`<p class="small muted">${S.conversas.length} ${S.conversas.length===1?'conversa guardada':'conversas guardadas'} (as 30 mais recentes).</p><div class="list">${S.conversas.map(x=>`<button class="li btn-li" data-act="histAbrir" data-id="${h(x.id)}"><span class="txt"><strong>${h(x.titulo||'Conversa')}</strong><span class="small muted">${h(dt(x.fim||x.inicio))} · ${x.msgs.length} mensagens</span></span>${ICON.arrow}</button>`).join('')}</div>`;
+  return o;
+}
 function telaChat(){
   let o=header('Pergunte ao instrutor',true);
+  o+=`<div class="row" style="gap:8px"><button class="chip" data-act="histLista">Histórico${S.conversas.length?' · '+S.conversas.length:''}</button>${S.chat.length?`<button class="chip" data-act="chatNova">Nova conversa</button>`:''}</div>`;
   o+=`<div class="stack" style="gap:10px">${S.chat.length?S.chat.map((m,i)=>`<div class="bubble ${m.role==='user'?'me':'ai'}"${i===S.chat.length-1&&m.role==='assistant'?' id="ultima"':''}>${m.pend&&!m.content?'Pensando…':h(m.content)}</div>${m.proposta?cartaoProposta(m.proposta,i):''}`).join(''):`<div class="card stack-s"><p class="small muted">Exemplos do que dá para pedir:</p><div class="chips">${['Coloque opções de troca em cada refeição','Troque o agachamento, meu joelho dói','Não gosto de peixe, substitua no cardápio','Estou sem tempo hoje, faço qual versão curta?'].map(q=>`<button class="chip" style="font-weight:500;text-align:left" data-act="sugestao">${h(q)}</button>`).join('')}</div></div>`}</div>`;
   const pend=S.chat.some(m=>m.pend);
   o+=`<form id="fChat" class="row" style="align-items:flex-end"><label class="sr" for="cMsg">Sua pergunta</label><textarea id="cMsg" style="min-height:48px;height:48px;flex:1" placeholder="Pergunte ou peça uma mudança"></textarea>${pend?'<button type="button" class="btn plain" data-act="parar">Parar</button>':'<button class="btn" type="submit">Enviar</button>'}</form>`;
@@ -1790,6 +1816,7 @@ function render(){
     if(S.sub==='evolucao') html=telaEvolucao();
     else if(S.sub==='relatorio') html=telaRelatorio();
     else if(S.sub==='comparar') html=telaComparar();
+    else if(S.sub==='historico') html=telaHistorico();
     else if(S.sub==='analise'&&S.plano) html=telaAnalise();
     else if(S.sub==='chat') html=telaChat();
     else if(S.sub==='digitar') html=telaDigitar();
@@ -1944,7 +1971,7 @@ function subHtml(e){
 function trocasParaIA(){
   const subs=(S.registro&&S.registro.subs)||{}; return Object.keys(subs).map(k=>({no_lugar_de:k,faz_agora:subs[k].nome,desde:subs[k].d}));
 }
-function montarCopia(){ return {app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,fotosCorpo:S.fotosCorpo||[],exames:S.exames,plano:S.plano,registro:S.registro}; }
+function montarCopia(){ return {app:'treino-nutricao',versao:1,em:new Date().toISOString(),perfil:S.perfil,foto:S.foto||null,fotosCorpo:S.fotosCorpo||[],exames:S.exames,plano:S.plano,registro:S.registro,conversas:S.conversas||[]}; }
 // nuvem=true abre a lista de apps do celular (OneDrive, Google Drive, e-mail...) para guardar o arquivo
 async function exportarCopia(nuvem){
   const nome='treino-nutricao-'+hoje()+'.json', txt=JSON.stringify(montarCopia());
@@ -2263,7 +2290,7 @@ document.addEventListener('click', async (ev)=>{
   const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
-  if(a==='voltar'){ S.dup=null;
+  if(a==='voltar'){ S.dup=null; if(S.sub==='historico'&&S.histId){ S.histId=null; render(); window.scrollTo(0,0); return; }
     if(S.sub==='senha'||S.sub==='codigo'){S.sub=null;S.editPerfil=true;S.erro=null;S.novoCodigo=null;S.emailRasc=null;} else if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
   else if(a==='perfil'){S.editPerfil=true;render();window.scrollTo(0,0);}
   else if(a==='gerar'){ gerarPlano(); }
@@ -2364,7 +2391,7 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='lockVoltar'){S.lock='entrar';S.erro=null;render();}
   else if(a==='apagarTudo'){
     try{ Object.keys(localStorage).filter(k=>k.startsWith('tn:')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
-    fecharCofre(); Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
+    fecharCofre(); Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},conversas:[],conversaId:null,histId:null,feitos:{},cfg:{provedor:'gemini',chave:'',modelo:''},cfgVisto:false,ready:false,migrar:false,erro:null,lock:'criar',bloqAte:0}); toast('Dados apagados.'); render();
   }
   else if(a==='bloquear'){ await COFRE.fila; bloquear(); }
   else if(a==='bioEntrar'){ await tentarDigital(false); }
@@ -2379,6 +2406,11 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='exportar'){ await exportarCopia(false); }
   else if(a==='nuvem'){ await exportarCopia(true); }
   else if(a==='comparar'){ S.sub='comparar'; S.cmpA=S.cmpB=null; render(); window.scrollTo(0,0); }
+  else if(a==='histLista'){ S.sub='historico'; S.histId=null; render(); window.scrollTo(0,0); }
+  else if(a==='histAbrir'){ S.histId=t.dataset.id; render(); window.scrollTo(0,0); }
+  else if(a==='histContinuar'){ const c=S.conversas.find(x=>x.id===t.dataset.id); if(c&&!S.chat.some(m=>m.pend)){ S.chat=c.msgs.map(m=>({role:m.role,content:m.content})); S.conversaId=c.id; S.histId=null; S.sub='chat'; render(); window.scrollTo(0,0); } }
+  else if(a==='histApagar'){ S.conversas=S.conversas.filter(x=>x.id!==t.dataset.id); if(S.conversaId===t.dataset.id) S.conversaId=null; await save('conversas',S.conversas); S.histId=null; toast('Conversa apagada.'); render(); }
+  else if(a==='chatNova'){ if(!S.chat.some(m=>m.pend)){ S.chat=[]; S.conversaId=null; render(); } }
   else if(a==='cmpFiltro'){ S.cmpF=(S.cmpF===t.dataset.f&&t.dataset.f!=='todos')?'todos':t.dataset.f; render(); }
   else if(a==='cmpVista'){ S.cmpV=t.dataset.v; render(); }
   else if(a==='cmpItem'){ abrirItemExame(t.dataset.n); }
@@ -2507,6 +2539,7 @@ document.addEventListener('change',(ev)=>{
       if(!d||d.app!=='treino-nutricao'){toast('Esse arquivo não é uma cópia do app.');return;}
       S.perfil=d.perfil||S.perfil; S.exames=Array.isArray(d.exames)?d.exames:[]; S.plano=d.plano||null; S.registro=d.registro&&d.registro.treinos?d.registro:{treinos:[]}; S.foto=(typeof d.foto==='string'&&d.foto.startsWith('data:image/'))?d.foto:null;
       await save('perfil',S.perfil); await save('exames',S.exames); await save('plano',S.plano); await save('registro',S.registro); await save('foto',S.foto); S.fotosCorpo=Array.isArray(d.fotosCorpo)?d.fotosCorpo.filter(x=>x&&typeof x.img==='string'&&x.img.startsWith('data:image/')).slice(0,FC_MAX):[]; await save('fotosCorpo',S.fotosCorpo);
+      if(Array.isArray(d.conversas)){ S.conversas=d.conversas.filter(c=>c&&c.id&&Array.isArray(c.msgs)).slice(0,30); await save('conversas',S.conversas); }
       S.editPerfil=false; S.tab='inicio'; toast('Cópia restaurada.'); render();
     });
   }
@@ -2523,7 +2556,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=37;
+const VERSAO_APP=38;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
@@ -2581,13 +2614,14 @@ const autoDigital=()=>{ if(S.lock==='entrar'&&bioAtiva()&&bioDisponivel()) setTi
 function bloquear(){
   if(!COFRE.key) return;
   fecharCofre(); if(chatCtl) chatCtl.abort();
-  Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
+  Object.assign(S,{perfil:null,foto:null,fotosCorpo:[],diaSel:null,exames:[],plano:null,registro:{treinos:[]},conversas:[],conversaId:null,histId:null,feitos:{},cfg:null,saude:null,chat:[],rascunho:null,busy:null,erro:null,sub:null,editPerfil:false,editCfg:false,ready:false,lock:'entrar',tab:'inicio',novoCodigo:null});
   window.scrollTo(0,0); render();
 }
 
 async function carregarDados(){
   const [perfil,exames,plano,registro]=await Promise.all([load('perfil',null),load('exames',[]),load('plano',null),load('registro',{treinos:[]})]);
   S.perfil=perfil; S.exames=Array.isArray(exames)?exames:[]; S.plano=plano; S.registro=registro&&registro.treinos?registro:{treinos:[]};
+  { const cv=await load('conversas',[]); S.conversas=Array.isArray(cv)?cv:[]; }
   S.foto=lsGet('foto')||null; S.fotosCorpo=Array.isArray(lsGet('fotosCorpo'))?lsGet('fotosCorpo'):[]; S.feitos=lsGet('feitos')||{}; S.cfg=normCfg(lsGet('cfg')); S.cfgVisto=!!lsGet('cfgVisto')||iaPronta();
   if(!S.cfg) S.cfg={provedor:'gemini',chave:'',modelo:''};
   S.saude=lsGet('saude');
