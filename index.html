@@ -2047,7 +2047,7 @@ function cardiosSemana(){
   const d=new Date(); const seg=new Date(d); seg.setDate(d.getDate()-((d.getDay()+6)%7)); const ini=isoData(seg), fim=hoje();
   const l=(S.registro.cardios||[]).filter(x=>x.d>=ini&&x.d<=fim); return {n:l.length,min:l.reduce((t,x)=>t+(x.min||0),0)};
 }
-const cardioTxt=(x)=>[dataCurta(x.d),x.tipo,x.min+' min',x.km?kgTxt(x.km)+' km':'',x.esf||''].filter(Boolean).join(' · ');
+const cardioTxt=(x)=>[dataCurta(x.d),x.tipo,x.min+' min',x.km?kgTxt(x.km)+' km':'',x.inc?'inclinação '+kgTxt(x.inc)+'%':'',x.esf||''].filter(Boolean).join(' · ');
 function cardioHtml(prescricao){
   const w=cardiosSemana(), rec=(S.registro.cardios||[]).slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0).slice(0,3);
   return `<div class="card stack-s"><div class="row between" style="gap:10px"><div class="stack-s" style="gap:0;min-width:0"><h3>Cardio</h3><span class="small muted">${w.n?w.n+(w.n===1?' sessão':' sessões')+' · '+w.min+' min nesta semana':'Nenhum cardio anotado esta semana'}</span></div><button class="btn ghost" style="min-height:44px;padding:0 16px;flex:none" data-act="cardioNovo">Anotar</button></div>${prescricao?`<p class="small muted">${h(prescricao)}</p>`:''}${rec.length?`<div class="stack-s" style="gap:2px">${rec.map(x=>`<div class="row between" style="gap:8px"><span class="small" style="min-width:0">${h(cardioTxt(x))}</span><button class="chip" style="min-height:44px;flex:none;padding:0 12px" data-act="cardioDel" data-id="${h(x.id)}" aria-label="Remover cardio: ${h(cardioTxt(x))}">Remover</button></div>`).join('')}</div>`:''}</div>`;
@@ -2060,6 +2060,7 @@ function abrirCardio(foco){
     <label class="f">Data<input id="cdData" type="date" value="${hoje()}" max="${hoje()}"></label>
     <div class="grid2"><label class="f">Duração (minutos)<input id="cdMin" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="30"></label>
     <label class="f">Distância (km, opcional)<input id="cdKm" type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder="3,5"></label></div>
+    <label class="f">Inclinação (%, opcional)<input id="cdInc" type="text" inputmode="decimal" autocomplete="off" maxlength="4" placeholder="Ex.: 5"></label>
     <label class="f">Esforço (opcional)<select id="cdEsf"><option value="">Não informar</option>${CARDIO_ESF.map(t=>`<option>${h(t)}</option>`).join('')}</select></label>
     <div id="cdErro" class="status bad row" role="alert" hidden></div>
     <button type="button" class="btn block" data-act="cardioSalvar">Salvar cardio</button></div>`;
@@ -2069,12 +2070,14 @@ function abrirCardio(foco){
 async function salvarCardio(){
   const g=(id)=>document.getElementById(id); if(!g('cdMin')) return;
   const erro=(t)=>{ const e=g('cdErro'); e.hidden=false; e.textContent=t; };
+  const incTxt=g('cdInc').value.trim(), inc=incTxt?parseFloat(incTxt.replace(',','.')):null;
   const min=parseInt(g('cdMin').value,10), kmTxt=g('cdKm').value.trim(), km=kmTxt?parseFloat(kmTxt.replace(',','.')):null, d=g('cdData').value;
   if(!isFinite(min)||min<1||min>600) return erro('Digite a duração em minutos (de 1 a 600).');
   if(km!==null&&(!isFinite(km)||km<0||km>500)) return erro('A distância precisa ser um número em km (ou deixe em branco).');
+  if(inc!==null&&(!isFinite(inc)||inc<0||inc>40)) return erro('A inclinação precisa ser um número de 0 a 40 (em %), ou deixe em branco.');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>hoje()) return erro('Escolha uma data de hoje ou de um dia que já passou.');
   const x={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),d,tipo:g('cdTipo').value,min};
-  if(km) x.km=Math.round(km*100)/100; if(g('cdEsf').value) x.esf=g('cdEsf').value;
+  if(km) x.km=Math.round(km*100)/100; if(inc) x.inc=Math.round(inc*10)/10; if(g('cdEsf').value) x.esf=g('cdEsf').value;
   const lista=(S.registro.cardios||[]).concat([x]).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0).slice(-200);
   S.registro=Object.assign({},S.registro,{cardios:lista}); await save('registro',S.registro);
   fecharExercicio(); toast('Cardio anotado.'); render();
@@ -2082,7 +2085,7 @@ async function salvarCardio(){
 
 function cardiosParaIA(){
   const lim=new Date(); lim.setDate(lim.getDate()-14); const ini=isoData(lim);
-  return (S.registro.cardios||[]).filter(x=>x.d>=ini).slice(-20).map(x=>({data:x.d,tipo:x.tipo,min:x.min,km:x.km,esforco:x.esf}));
+  return (S.registro.cardios||[]).filter(x=>x.d>=ini).slice(-20).map(x=>({data:x.d,tipo:x.tipo,min:x.min,km:x.km,inclinacao_pct:x.inc,esforco:x.esf}));
 }
 // ===== Fotos corporais (evolução estética): ficam só neste aparelho, criptografadas, e nunca vão para a IA =====
 const FC_POS=['Frente','Lado','Costas'], FC_MAX=30;
@@ -2520,7 +2523,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=36;
+const VERSAO_APP=37;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
