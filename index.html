@@ -2134,8 +2134,9 @@ function cartaoFotosCorpo(){
   return `<div class="card stack"><div class="stack-s" style="gap:2px"><h3>Fotos corporais</h3><span class="small muted">Acompanhe a evolução estética. As fotos ficam só neste celular, protegidas, e não são enviadas à IA.</span></div>
     <div class="grid2"><label class="f">Posição<select id="fcPos">${FC_POS.map(p=>`<option>${p}</option>`).join('')}</select></label><label class="f">Data<input id="fcData" type="date" value="${hoje()}" max="${hoje()}"></label></div>
     <label class="btn block" for="fFotoCorpo" style="cursor:pointer">${ICON.up}Adicionar foto</label><input id="fFotoCorpo" class="sr" type="file" accept="image/*"><span id="fcMsg" class="small muted" role="status"></span>
-    ${comp.map(c=>`<div class="stack-s"><span class="small" style="font-weight:700">${h(c.pos)}: ${h(dataBR(c.a.d))} → ${h(dataBR(c.b.d))}</span><div class="grid2"><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.a.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.a.d))}"><img src="${c.a.img}" alt="Primeira foto de ${h(c.pos)}"></button><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.b.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.b.d))}"><img src="${c.b.img}" alt="Foto mais recente de ${h(c.pos)}"></button></div></div>`).join('')}
-    ${l.length?`<div class="stack-s"><span class="small muted" style="font-weight:600">Todas as fotos (${l.length})</span><div class="fc-grid">${l.slice().reverse().map(mini).join('')}</div></div>`:''}</div>`;
+    ${!l.length?'':!S.fotosVer?`<button class="btn ghost block" data-act="fotosVer">Ver fotos (${l.length})</button><span class="small muted">As fotos ficam ocultas até você tocar. Elas voltam a ficar ocultas ao sair desta tela ou do app.</span>`:`<button class="btn plain block" data-act="fotosOcultar">Ocultar fotos</button>`}
+    ${!S.fotosVer?'':comp.map(c=>`<div class="stack-s"><span class="small" style="font-weight:700">${h(c.pos)}: ${h(dataBR(c.a.d))} → ${h(dataBR(c.b.d))}</span><div class="grid2"><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.a.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.a.d))}"><img src="${c.a.img}" alt="Primeira foto de ${h(c.pos)}"></button><button class="fc-th" data-act="fotoCorpoVer" data-id="${h(c.b.id)}" aria-label="Ver foto de ${h(c.pos)} de ${h(dataBR(c.b.d))}"><img src="${c.b.img}" alt="Foto mais recente de ${h(c.pos)}"></button></div></div>`).join('')}
+    ${l.length&&S.fotosVer?`<div class="stack-s"><span class="small muted" style="font-weight:600">Todas as fotos (${l.length})</span><div class="fc-grid">${l.slice().reverse().map(mini).join('')}</div></div>`:''}</div>`;
 }
 function abrirFotoCorpo(id){
   const x=(S.fotosCorpo||[]).find(f=>f.id===id); if(!x) return; fecharExercicio();
@@ -2288,7 +2289,7 @@ document.addEventListener('change',async(ev)=>{
 
 document.addEventListener('click', async (ev)=>{
   const t=ev.target.closest('[data-tab],[data-act]'); if(!t) return;
-  if(t.dataset.tab){ S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ S.fotosVer=false; S.tab=t.dataset.tab; S.sub=null; S.editPerfil=false; S.editCfg=false; S.erro=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
   if(a==='voltar'){ S.dup=null; if(S.sub==='historico'&&S.histId){ S.histId=null; render(); window.scrollTo(0,0); return; }
     if(S.sub==='senha'||S.sub==='codigo'){S.sub=null;S.editPerfil=true;S.erro=null;S.novoCodigo=null;S.emailRasc=null;} else if(S.sub==='revisar'){S.rascunho=null;S.sub=null;S.tab='exames';} else if(S.editCfg){S.editCfg=false;S.cfg=lsGet('cfg')||{provedor:'gemini',chave:'',modelo:''};S.erro=null;} else if(S.editPerfil){S.editPerfil=false;} else S.sub=null; render(); window.scrollTo(0,0); }
@@ -2406,6 +2407,8 @@ document.addEventListener('click', async (ev)=>{
   else if(a==='exportar'){ await exportarCopia(false); }
   else if(a==='nuvem'){ await exportarCopia(true); }
   else if(a==='comparar'){ S.sub='comparar'; S.cmpA=S.cmpB=null; render(); window.scrollTo(0,0); }
+  else if(a==='fotosVer'){ S.fotosVer=true; render(); }
+  else if(a==='fotosOcultar'){ S.fotosVer=false; render(); }
   else if(a==='histLista'){ S.sub='historico'; S.histId=null; render(); window.scrollTo(0,0); }
   else if(a==='histAbrir'){ S.histId=t.dataset.id; render(); window.scrollTo(0,0); }
   else if(a==='histContinuar'){ const c=S.conversas.find(x=>x.id===t.dataset.id); if(c&&!S.chat.some(m=>m.pend)){ S.chat=c.msgs.map(m=>({role:m.role,content:m.content})); S.conversaId=c.id; S.histId=null; S.sub='chat'; render(); window.scrollTo(0,0); } }
@@ -2556,7 +2559,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=38;
+const VERSAO_APP=39;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
@@ -2633,7 +2636,7 @@ async function carregarDados(){
 // bloqueio automático: 15 minutos em segundo plano
 const BLOQ_MS=15*60*1000; let saiuEm=null;
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){ saiuEm=Date.now(); }
+  if(document.hidden){ saiuEm=Date.now(); if(S.fotosVer){ S.fotosVer=false; try{ fecharExercicio(); }catch(e){} render(); } }
   else if(saiuEm&&COFRE.key&&Date.now()-saiuEm>=BLOQ_MS){ saiuEm=null; COFRE.fila.then(()=>{ bloquear(); autoDigital(); }); }
   else saiuEm=null;
 });
