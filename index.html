@@ -697,11 +697,17 @@ function cartaoRelogio(){
       ${diagSaude(sd)}</div></details></div>`;
 }
 
+const METODO_FREQ2=`ESTRUTURA DE TREINO ESCOLHIDA PELA PESSOA: cada grupo muscular grande treinado 2 vezes por semana, de forma diferente nas duas sessões.
+- Sessão 1 do grupo = FORÇA: exercícios compostos, 4 a 8 repetições, descanso de 90 a 150 s.
+- Sessão 2 do grupo = VOLUME: outros exercícios, ângulos ou aparelhos (e unilaterais quando fizer sentido), 10 a 15 repetições, descanso de 45 a 75 s, mais perto da falha.
+- Os exercícios NÃO podem se repetir entre as duas sessões do mesmo grupo. Deixe pelo menos 48 h entre elas.
+- Divisão conforme os dias: 2 dias = corpo todo A (força) e B (volume); 3 dias = corpo todo, alternando o foco (A força, B volume, C misto); 4 dias = superior força, inferior força, superior volume, inferior volume; 5 a 6 dias = empurrar, puxar e pernas, repetidos com foco diferente.
+- Escreva "força" ou "volume" no início da dica de cada exercício e cite a estrutura no campo "divisao".`;
 function contexto(){
   const p=S.perfil||{};
   const ex=S.exames.slice(0,8).map(e=>({tipo:e.tipo,data:e.data,itens:(e.itens||[]).map(i=>[i.nome,i.valor,i.unidade,refCurta(i.referencia),i.situacao,(i.anteriores&&i.anteriores.length)?'antes: '+i.anteriores.map(a=>a.valor+' em '+a.data).join(', '):''].filter(Boolean).join(' | '))}));
   const rs=resumoSaude(), cd=cardiosParaIA();
-  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'')+(cd.length?'\nCARDIOS FEITOS NOS DIAS LIVRES (últimos 14 dias): '+JSON.stringify(cd):'')+(trocasParaIA().length?'\nTROCAS DE EXERCÍCIO ESCOLHIDAS PELO USUÁRIO: '+JSON.stringify(trocasParaIA()):'');
+  return 'PERFIL: '+JSON.stringify(p)+'\nEXAMES (mais recentes primeiro): '+JSON.stringify(ex)+(rs?'\nRELÓGIO (Conexão Saúde, últimos 7 dias): '+JSON.stringify(rs):'')+(cd.length?'\nCARDIOS FEITOS NOS DIAS LIVRES (últimos 14 dias): '+JSON.stringify(cd):'')+(trocasParaIA().length?'\nTROCAS DE EXERCÍCIO ESCOLHIDAS PELO USUÁRIO: '+JSON.stringify(trocasParaIA()):'')+(p.metodo==='freq2'?'\n'+METODO_FREQ2:'');
 }
 
 const REGRAS = `Você atua ao mesmo tempo como nutricionista esportivo, avaliador físico e personal trainer, falando português do Brasil, com linguagem simples e direta.
@@ -1377,6 +1383,7 @@ function telaPerfil(){
       <label class="f">Experiência<select id="pNivel" name="nivel">${opt([['iniciante','Iniciante'],['intermediário','Intermediário'],['avançado','Avançado']],p.nivel)}</select></label>
       <label class="f">Onde treina<select id="pLocal" name="local">${opt([['academia','Academia'],['casa com halteres','Casa com halteres'],['casa sem equipamento','Casa sem equipamento']],p.local)}</select></label>
       <label class="f">Dias por semana<select id="pDias" name="dias">${opt([['2','2 dias'],['3','3 dias'],['4','4 dias'],['5','5 dias'],['6','6 dias']],p.dias||'4')}</select></label>
+      <label class="f">Estrutura do treino<select id="pMet" name="metodo">${opt([['padrao','Padrão (o instrutor escolhe)'],['freq2','Cada grupo 2x por semana, de formas diferentes']],p.metodo||'padrao')}</select></label>
       <label class="f">Tempo por treino<select id="pMin" name="minutos">${opt([['30','30 min'],['45','45 min'],['60','60 min'],['75','75 min'],['90','90 min']],p.minutos||'60')}</select></label>
     </div>
     <label class="f">Lesões, dores ou problemas de saúde<textarea id="pLesoes" name="lesoes" placeholder="Ex.: dor no joelho direito, hipertensão controlada">${h(p.lesoes)}</textarea></label>
@@ -2512,7 +2519,7 @@ document.addEventListener('submit', async (ev)=>{
     const g=(id)=>document.getElementById(id).value.trim();
     if(!g('pNome')){document.getElementById('pNome').focus();toast('Preencha como quer ser chamado.');return;}
     const novo=!S.perfil;
-    S.perfil={nome:g('pNome'),sexo:g('pSexo'),idade:g('pIdade'),altura:g('pAltura'),peso:g('pPeso'),objetivo:g('pObj'),nivel:g('pNivel'),local:g('pLocal'),dias:g('pDias'),minutos:g('pMin'),lesoes:g('pLesoes'),alimentacao:g('pAlim')};
+    S.perfil={nome:g('pNome'),sexo:g('pSexo'),idade:g('pIdade'),altura:g('pAltura'),peso:g('pPeso'),objetivo:g('pObj'),nivel:g('pNivel'),local:g('pLocal'),dias:g('pDias'),metodo:g('pMet'),minutos:g('pMin'),lesoes:g('pLesoes'),alimentacao:g('pAlim')};
     S.editPerfil=false; await save('perfil',S.perfil); if(!novo) toast('Perfil salvo.'); S.tab='inicio'; S.sub=null; render(); window.scrollTo(0,0);
   }
   else if(f.id==='fDig'){
@@ -2559,7 +2566,7 @@ function tickBloqueio(){ const t=setInterval(()=>{ if(!S.lock||Date.now()>=(S.bl
 // ===== Digital (WebAuthn + PRF): a chave mestra ganha uma terceira trava, que só abre com a digital do aparelho.
 // O segredo sai do próprio sensor (não fica guardado no app), então a criptografia não fica mais fraca que a senha. =====
 const BIO_SALT=new TextEncoder().encode('treino-nutricao-bio-v1');
-const VERSAO_APP=39;
+const VERSAO_APP=40;
 const bioNativo=()=>{ const C=window.Capacitor; return !!(NATIVO&&C&&typeof C.nativePromise==='function'&&(!C.isPluginAvailable||C.isPluginAvailable('TnBiometric'))); };
 const bioNat=(m,op)=>window.Capacitor.nativePromise('TnBiometric',m,op||{});
 function bioMotivo(){
